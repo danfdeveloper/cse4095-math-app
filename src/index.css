@@ -1,0 +1,76 @@
+:root {
+  /* Colors. Text pairings were checked against WCAG AA (4.5:1). */
+  --color-bg: #f3f7ff;
+  --color-surface: #ffffff;
+  --color-text: #1b2440;
+  --color-text-muted: #4a5578;
+  --color-primary: #3b3fd8;
+  --color-primary-hover: #2f33b8;
+  --color-primary-active: #262a98;
+  --color-primary-soft: #e6e8ff;
+  --color-on-primary: #ffffff;
+  --color-accent: #ffc83d;
+  --color-border: #c9d3ee;
+  --color-focus: #1b2440;
+  --color-disabled-bg: #e3e7f3;
+  --color-disabled-text: #59627f;
+
+  /* Typography. Sizes are in rem so they follow the user's font setting. */
+  --font-family:
+    system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-size-base: 1.125rem;
+  --font-size-lg: 1.375rem;
+  --font-size-xl: clamp(1.625rem, 1.2rem + 1.8vw, 2.25rem);
+  --font-size-display: clamp(2rem, 1.4rem + 2.8vw, 3.25rem);
+  --font-size-button: 1.25rem;
+
+  /* Spacing, shape and layout. */
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2.5rem;
+  --radius-lg: 1.25rem;
+  --radius-pill: 999px;
+  --shadow-card:
+    0 4px 0 rgba(27, 36, 64, 0.06), 0 12px 32px rgba(27, 36, 64, 0.08);
+  --page-max-width: 60rem;
+  --page-gutter: clamp(1rem, 4vw, 2rem);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  line-height: 1.5;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--color-text);
+  line-height: 1.2;
+}
+
+h1 {
+  margin: 0 0 var(--space-md);
+  font-size: var(--font-size-display);
+}
+
+h2 {
+  font-size: var(--font-size-xl);
+}
+
+/* One visible focus style for every interactive element. */
+:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 3px;
+}

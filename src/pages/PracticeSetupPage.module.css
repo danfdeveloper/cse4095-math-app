@@ -1,0 +1,31 @@
+.intro {
+  margin: 0 0 var(--space-lg);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-lg);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-md);
+}
+
+.message {
+  margin: 0;
+  color: var(--color-text);
+  font-weight: 700;
+}
+
+/* Full width on phones so the button is easy to hit. */
+@media (max-width: 39.99rem) {
+  .actions {
+    align-items: stretch;
+  }
+}

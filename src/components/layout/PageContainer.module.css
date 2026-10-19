@@ -1,0 +1,7 @@
+.container {
+  flex: 1;
+  width: 100%;
+  max-width: var(--page-max-width);
+  margin: 0 auto;
+  padding: clamp(1.5rem, 5vw, 3rem) var(--page-gutter);
+}
