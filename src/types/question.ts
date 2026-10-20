@@ -10,6 +10,7 @@ export interface Question {
   operation: MathOperation
   firstOperand: number
   secondOperand: number
+  /** The expression without its answer, such as "7 × 8". */
   displayText: string
   correctAnswer: number
   choices: number[]

@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes } from 'react'
+import type { ComponentProps } from 'react'
 import { Link, type LinkProps } from 'react-router'
 import styles from './Button.module.css'
 
@@ -8,7 +8,7 @@ function buttonClassName(variant: ButtonVariant, className?: string) {
   return [styles.button, styles[variant], className].filter(Boolean).join(' ')
 }
 
-type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+type ButtonProps = ComponentProps<'button'> & {
   variant?: ButtonVariant
 }
 

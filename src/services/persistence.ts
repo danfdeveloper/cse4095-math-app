@@ -1,0 +1,137 @@
+import { createDefaultSettings } from '../constants/settings'
+import type { PracticeAttempt, PracticeSession } from '../types/session'
+import type { AppSettings } from '../types/settings'
+import type { AppStatistics } from '../types/statistics'
+import { limitSessions } from '../utils/sessionHistory'
+import {
+  isAppStatistics,
+  isPracticeAttempt,
+  isPracticeSession,
+  keepValidRecords,
+  sanitizeSettings,
+} from '../utils/storedDataValidation'
+import {
+  createEmptyStatistics,
+  statisticsFromAttempts,
+} from './statisticsService'
+import { prepareStorage } from './storageMigrations'
+import {
+  readRawJson,
+  STORAGE_KEYS,
+  writeJson,
+  type StorageKey,
+  type WriteResult,
+} from './storageService'
+
+/** Why saved data could not be used or saved normally. */
+export type StorageProblem = 'unavailable' | 'full' | 'newer-version'
+
+export interface PersistedData {
+  settings: AppSettings
+  sessions: PracticeSession[]
+  attempts: PracticeAttempt[]
+  statistics: AppStatistics
+  /** Set when something went wrong that the student should be told about. */
+  problem: StorageProblem | null
+  /** False when saving would fail or would overwrite data the app does not understand. */
+  writable: boolean
+}
+
+function loadRecords<T>(
+  key: StorageKey,
+  isValid: (record: unknown) => record is T,
+): { records: T[]; unavailable: boolean } {
+  const result = readRawJson(key)
+  if (result.status === 'unavailable') return { records: [], unavailable: true }
+  if (result.status !== 'ok') return { records: [], unavailable: false }
+
+  // Dropping a bad record, or resetting a list that is not a list, loses only that.
+  return {
+    records: keepValidRecords(result.value, isValid) ?? [],
+    unavailable: false,
+  }
+}
+
+/**
+ * Everything the app saved last time, cleaned up. Always returns something
+ * usable: if storage is off, full of rubbish, or too new, the app starts fresh.
+ */
+export function loadPersistedData(): PersistedData {
+  const fresh: PersistedData = {
+    settings: createDefaultSettings(),
+    sessions: [],
+    attempts: [],
+    statistics: createEmptyStatistics(),
+    problem: null,
+    writable: false,
+  }
+
+  const preparation = prepareStorage()
+  if (preparation === 'unavailable') return { ...fresh, problem: 'unavailable' }
+  if (preparation === 'newer-version')
+    return { ...fresh, problem: 'newer-version' }
+
+  const settings = readRawJson(STORAGE_KEYS.settings)
+  const sessions = loadRecords(STORAGE_KEYS.sessions, isPracticeSession)
+  const attempts = loadRecords(STORAGE_KEYS.attempts, isPracticeAttempt)
+  const savedStatistics = readRawJson(STORAGE_KEYS.statistics)
+
+  if (
+    settings.status === 'unavailable' ||
+    sessions.unavailable ||
+    attempts.unavailable ||
+    savedStatistics.status === 'unavailable'
+  ) {
+    return { ...fresh, problem: 'unavailable' }
+  }
+
+  return {
+    settings:
+      settings.status === 'ok'
+        ? sanitizeSettings(settings.value)
+        : fresh.settings,
+    sessions: limitSessions(sessions.records),
+    attempts: attempts.records,
+    statistics: chooseStatistics(
+      savedStatistics.status === 'ok' ? savedStatistics.value : null,
+      attempts.records,
+    ),
+    problem: null,
+    writable: true,
+  }
+}
+
+/**
+ * The saved totals, unless they are missing or damaged, or have fallen behind
+ * the saved attempts (a save that failed). The totals can never honestly be
+ * lower than the number of attempts still stored, since attempts only leave
+ * once they are counted in the totals. In those cases they are counted again
+ * from the attempts.
+ */
+function chooseStatistics(
+  saved: unknown,
+  attempts: readonly PracticeAttempt[],
+): AppStatistics {
+  if (isAppStatistics(saved) && saved.attempted >= attempts.length) return saved
+  return statisticsFromAttempts(attempts)
+}
+
+export function saveSettings(settings: AppSettings): WriteResult {
+  return writeJson(STORAGE_KEYS.settings, settings)
+}
+
+export function saveSessions(
+  sessions: readonly PracticeSession[],
+): WriteResult {
+  return writeJson(STORAGE_KEYS.sessions, limitSessions(sessions))
+}
+
+export function saveAttempts(
+  attempts: readonly PracticeAttempt[],
+): WriteResult {
+  return writeJson(STORAGE_KEYS.attempts, attempts)
+}
+
+export function saveStatistics(statistics: AppStatistics): WriteResult {
+  return writeJson(STORAGE_KEYS.statistics, statistics)
+}

@@ -1,0 +1,28 @@
+.status {
+  min-height: 1.5em;
+  margin: 0 0 var(--space-md);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+}
+
+.section {
+  margin-bottom: var(--space-xl);
+}
+
+.section > h2 {
+  margin: 0 0 var(--space-md);
+}
+
+.reset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  align-items: center;
+  margin-top: var(--space-xl);
+}
+
+.note {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-weight: 700;
+}

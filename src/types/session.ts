@@ -2,6 +2,12 @@ import type { DifficultyLevel, MathOperation, QuestionSource } from './question'
 
 export type SessionLength = number | 'continuous'
 
+/** What the student reports after flipping a card. */
+export interface QuestionResult {
+  selectedAnswer: number
+  selfReportedCorrect: boolean
+}
+
 /** The choices a student makes on the practice setup page. */
 export interface PracticeConfig {
   operations: MathOperation[]

@@ -52,6 +52,9 @@ export const SESSION_LENGTH_OPTIONS: readonly SessionLength[] = [
 
 export const DEFAULT_SESSION_LENGTH: SessionLength = 10
 
+/** Each question has one correct answer and three incorrect ones (spec section 8.2). */
+export const CHOICES_PER_QUESTION = 4
+
 export function describeSessionLength(length: SessionLength): string {
   return length === 'continuous' ? 'Continuous practice' : `${length} questions`
 }

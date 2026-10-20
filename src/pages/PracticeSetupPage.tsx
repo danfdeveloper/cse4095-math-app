@@ -1,12 +1,14 @@
 import { useId, useState, type SubmitEvent } from 'react'
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 import { Button } from '../components/common/Button'
 import { DifficultySelector } from '../components/practice/DifficultySelector'
 import { OperationSelector } from '../components/practice/OperationSelector'
 import { SessionLengthSelector } from '../components/practice/SessionLengthSelector'
 import { DEFAULT_SESSION_LENGTH } from '../constants/practice'
+import { usePracticeSession } from '../hooks/usePracticeSession'
 import type { DifficultyLevel, MathOperation } from '../types/question'
 import type { PracticeConfig, SessionLength } from '../types/session'
+import { isPracticeConfig } from '../utils/validation'
 import styles from './PracticeSetupPage.module.css'
 
 /** Says what is still missing, or null when the session can start. */
@@ -28,14 +30,25 @@ function getValidationMessage(
 
 export function PracticeSetupPage() {
   const navigate = useNavigate()
+  const { startSession } = usePracticeSession()
   const messageId = useId()
 
-  // Nothing is preselected except the session length. Saved defaults from the
-  // settings page are applied here later (Task 49).
-  const [operations, setOperations] = useState<MathOperation[]>([])
-  const [difficulty, setDifficulty] = useState<DifficultyLevel | null>(null)
+  // A fresh visit preselects nothing except the session length. Saved defaults
+  // from the settings page are applied here later (Task 49). Coming from a
+  // session summary ("Change Settings"), it starts from that session's choices.
+  const { state } = useLocation()
+  const [previous] = useState(() => {
+    const config = (state as { config?: unknown } | null)?.config
+    return isPracticeConfig(config) ? config : null
+  })
+  const [operations, setOperations] = useState<MathOperation[]>(
+    previous?.operations ?? [],
+  )
+  const [difficulty, setDifficulty] = useState<DifficultyLevel | null>(
+    previous?.difficulty ?? null,
+  )
   const [sessionLength, setSessionLength] = useState<SessionLength>(
-    DEFAULT_SESSION_LENGTH,
+    previous?.sessionLength ?? DEFAULT_SESSION_LENGTH,
   )
 
   const validationMessage = getValidationMessage(operations, difficulty)
@@ -45,7 +58,7 @@ export function PracticeSetupPage() {
     if (difficulty === null || operations.length === 0) return
 
     const config: PracticeConfig = { operations, difficulty, sessionLength }
-    navigate('/practice/session', { state: { config } })
+    if (startSession(config)) navigate('/practice/session')
   }
 
   return (

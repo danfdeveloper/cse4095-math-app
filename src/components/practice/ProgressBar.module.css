@@ -1,0 +1,19 @@
+.track {
+  height: 1rem;
+  overflow: hidden;
+  border: 3px solid var(--color-primary);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+}
+
+.fill {
+  height: 100%;
+  background: var(--color-primary);
+  transition: width 300ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fill {
+    transition: none;
+  }
+}

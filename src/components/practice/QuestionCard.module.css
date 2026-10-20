@@ -1,0 +1,84 @@
+.card {
+  width: 100%;
+  max-width: 40rem;
+  margin: 0 auto;
+  perspective: 1500px;
+  /* A short fade as each new question appears. */
+  animation: card-enter 200ms ease-out;
+}
+
+@keyframes card-enter {
+  from {
+    opacity: 0;
+  }
+}
+
+/*
+ * Both faces share one grid cell, so the card is as tall as the taller face
+ * and the two line up exactly. Turning .inner flips whichever is showing.
+ */
+.inner {
+  display: grid;
+  transform-style: preserve-3d;
+  transition: transform 600ms ease;
+}
+
+.flipped {
+  transform: rotateY(180deg);
+}
+
+.face {
+  grid-area: 1 / 1;
+  padding: clamp(1.25rem, 4vw, 2.5rem);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* Turned half way round already, so it reads correctly once .inner flips. */
+.back {
+  transform: rotateY(180deg);
+}
+
+/*
+ * No animation (the app setting, or the device's reduced-motion preference):
+ * no turning at all. The face that is not wanted is simply not shown, so the
+ * card still changes clearly.
+ */
+.noAnimation {
+  animation: none;
+}
+
+.noAnimation .inner {
+  transform: none;
+  transition: none;
+}
+
+.noAnimation .back {
+  transform: none;
+}
+
+.noAnimation .inactive {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    animation: none;
+  }
+
+  .inner {
+    transform: none;
+    transition: none;
+  }
+
+  .back {
+    transform: none;
+  }
+
+  .inactive {
+    display: none;
+  }
+}

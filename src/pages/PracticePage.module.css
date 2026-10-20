@@ -1,0 +1,11 @@
+/* Lines up with the card below it. */
+.progress {
+  max-width: 40rem;
+  margin: 0 auto var(--space-md);
+}
+
+.endRow {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-lg);
+}

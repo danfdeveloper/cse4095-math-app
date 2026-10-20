@@ -1,0 +1,47 @@
+.back {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+}
+
+.answer {
+  margin: 0;
+  font-size: clamp(2.25rem, 1.2rem + 5vw, 4.5rem);
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+/* Focus is moved here on purpose; it is not a control, so no ring is needed. */
+.answer:focus {
+  outline: none;
+}
+
+.yourAnswer {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+}
+
+.explanation {
+  max-width: 28rem;
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  justify-content: center;
+  width: 100%;
+}
+
+@media (max-width: 29.99rem) {
+  .actions > * {
+    width: 100%;
+  }
+}

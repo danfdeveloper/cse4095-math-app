@@ -7,8 +7,6 @@ describe('application routes', () => {
   it.each([
     ['/', 'Welcome to Math Practice!'],
     ['/practice/setup', 'Practice Setup'],
-    ['/practice/session', 'Practice'],
-    ['/practice/summary', 'Session Summary'],
     ['/statistics', 'Statistics'],
     ['/settings', 'Settings'],
   ])('renders the page for %s', (path, heading) => {

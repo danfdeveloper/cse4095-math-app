@@ -1,0 +1,54 @@
+.front {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  align-items: center;
+  text-align: center;
+}
+
+.position {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+/* Large, readable math text. */
+.question {
+  margin: 0;
+  font-size: clamp(2.25rem, 1.2rem + 5vw, 4.5rem);
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+/* Focus is moved here on purpose; it is not a control, so no ring is needed. */
+.question:focus {
+  outline: none;
+}
+
+/* Single column on phones; two columns from about 480px. */
+.choices {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-md);
+  width: 100%;
+}
+
+@media (min-width: 30rem) {
+  .choices {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.hint {
+  margin: 0;
+  color: var(--color-text);
+  font-weight: 700;
+}

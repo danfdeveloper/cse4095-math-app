@@ -1,0 +1,23 @@
+/* Lines up with the header and page content: same width, same gutters. */
+.region {
+  max-width: var(--page-max-width);
+  margin: 0 auto;
+  padding: var(--space-md) var(--page-gutter) 0;
+}
+
+.warning {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-md) var(--space-lg);
+  border: 3px solid var(--color-accent);
+  border-radius: var(--radius-lg);
+  background: #fff4d6;
+}
+
+.message {
+  flex: 1 1 18rem;
+  margin: 0;
+}

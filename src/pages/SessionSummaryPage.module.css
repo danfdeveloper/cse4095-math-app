@@ -1,0 +1,33 @@
+.heading {
+  margin-bottom: var(--space-sm);
+}
+
+/* Focus is moved here on purpose; it is not a control, so no ring is needed. */
+.heading:focus {
+  outline: none;
+}
+
+.intro {
+  margin: 0 0 var(--space-lg);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-lg);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin-top: var(--space-lg);
+}
+
+.note {
+  margin: var(--space-md) 0 0;
+  color: var(--color-text-muted);
+  font-weight: 700;
+}
+
+@media (max-width: 39.99rem) {
+  .actions > * {
+    width: 100%;
+  }
+}
