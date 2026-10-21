@@ -1,3 +1,4 @@
+import { DIFFICULTY_ACCENT } from '../../constants/accents'
 import type { DifficultyRow } from '../../services/statisticsService'
 import { formatDifficulty } from '../../utils/format'
 import styles from './StatisticsGrid.module.css'
@@ -15,6 +16,7 @@ export function DifficultyStatistics({ rows }: DifficultyStatisticsProps) {
         <StatisticsCard
           key={row.difficulty}
           title={formatDifficulty(row.difficulty)}
+          accent={DIFFICULTY_ACCENT[row.difficulty]}
           counts={row}
         />
       ))}

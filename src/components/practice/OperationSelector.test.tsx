@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
+import { OPERATION_ACCENT } from '../../constants/accents'
 import type { MathOperation } from '../../types/question'
 import { OperationSelector } from './OperationSelector'
 
@@ -162,5 +163,41 @@ describe('OperationSelector', () => {
       .getByRole('checkbox', { name: 'Subtraction' })
       .closest('label')!
     expect(unselected).not.toHaveTextContent('✓')
+  })
+})
+
+describe('OperationSelector and its colours', () => {
+  const accentOf = (name: string) =>
+    screen
+      .getByRole('checkbox', { name })
+      .closest('label')!
+      .getAttribute('data-accent')
+
+  it('gives each operation the colour set for it', () => {
+    render(<Harness />)
+
+    expect(accentOf('Addition')).toBe(OPERATION_ACCENT.addition)
+    expect(accentOf('Subtraction')).toBe(OPERATION_ACCENT.subtraction)
+    expect(accentOf('Multiplication')).toBe(OPERATION_ACCENT.multiplication)
+    expect(accentOf('Division')).toBe(OPERATION_ACCENT.division)
+  })
+
+  it('gives each operation a different colour', () => {
+    render(<Harness />)
+
+    const colours = [
+      'Addition',
+      'Subtraction',
+      'Multiplication',
+      'Division',
+    ].map(accentOf)
+    expect(new Set(colours).size).toBe(4)
+  })
+
+  it('gives Mixed operations a colour of its own', () => {
+    render(<Harness />)
+
+    expect(accentOf('Mixed operations')).toBe('pink')
+    expect(Object.values(OPERATION_ACCENT)).not.toContain('pink')
   })
 })

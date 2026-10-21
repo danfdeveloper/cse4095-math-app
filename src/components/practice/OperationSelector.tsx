@@ -1,3 +1,4 @@
+import { OPERATION_ACCENT } from '../../constants/accents'
 import { MATH_OPERATIONS, OPERATION_INFO } from '../../constants/practice'
 import type { MathOperation } from '../../types/question'
 import { OptionCard } from '../common/OptionCard'
@@ -6,11 +7,14 @@ import { OptionGroup } from '../common/OptionGroup'
 interface OperationSelectorProps {
   selected: MathOperation[]
   onChange: (operations: MathOperation[]) => void
+  /** The group's name; the settings page words it differently. */
+  legend?: string
 }
 
 export function OperationSelector({
   selected,
   onChange,
+  legend = 'What do you want to practice?',
 }: OperationSelectorProps) {
   const allSelected = selected.length === MATH_OPERATIONS.length
 
@@ -23,13 +27,14 @@ export function OperationSelector({
   }
 
   return (
-    <OptionGroup legend="What do you want to practice?">
+    <OptionGroup legend={legend}>
       {MATH_OPERATIONS.map((operation) => (
         <OptionCard
           key={operation}
           type="checkbox"
           label={OPERATION_INFO[operation].label}
           symbol={OPERATION_INFO[operation].symbol}
+          accent={OPERATION_ACCENT[operation]}
           checked={selected.includes(operation)}
           onChange={() => toggle(operation)}
         />
@@ -38,6 +43,7 @@ export function OperationSelector({
         type="checkbox"
         label="Mixed operations"
         description="Practice all four together."
+        accent="pink"
         fullRow
         checked={allSelected}
         onChange={() => onChange(allSelected ? [] : [...MATH_OPERATIONS])}

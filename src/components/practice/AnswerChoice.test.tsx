@@ -96,3 +96,46 @@ describe('AnswerChoice', () => {
     expect(screen.getByRole('button', { name: '0' })).toBeInTheDocument()
   })
 })
+
+describe('AnswerChoice and its colour', () => {
+  it('has the accent it was given, and none otherwise', () => {
+    const { rerender } = render(
+      <AnswerChoice
+        value={56}
+        accent="purple"
+        selected={false}
+        onSelect={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('button', { name: '56' })).toHaveAttribute(
+      'data-accent',
+      'purple',
+    )
+
+    rerender(<AnswerChoice value={56} selected={false} onSelect={vi.fn()} />)
+    expect(screen.getByRole('button', { name: '56' })).not.toHaveAttribute(
+      'data-accent',
+    )
+  })
+
+  it('shows a check mark when picked, whatever its colour', () => {
+    render(
+      <AnswerChoice value={56} accent="pink" selected onSelect={vi.fn()} />,
+    )
+
+    expect(screen.getByRole('button', { name: '56' })).toHaveTextContent('✓')
+  })
+
+  it('is named by its number alone, so its colour is no part of what is read out', () => {
+    render(
+      <AnswerChoice
+        value={56}
+        accent="teal"
+        selected={false}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: '56' })).toBeInTheDocument()
+  })
+})

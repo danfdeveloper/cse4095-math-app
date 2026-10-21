@@ -1,16 +1,20 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createDefaultSettings } from '../constants/settings'
-import { makeAttempt, makeSession } from '../test/fixtures'
+import { makeAttempt, makeMistakePattern, makeSession } from '../test/fixtures'
 import {
   blockStorage,
   breakStorageMethod,
+  failReadsOf,
   fillStorage,
   stored,
 } from '../test/storage'
 import type { AppSettings } from '../types/settings'
+import { recordMistake } from './mistakePatterns'
 import {
+  eraseSavedData,
   loadPersistedData,
   saveAttempts,
+  saveMistakePatterns,
   saveSessions,
   saveSettings,
   saveStatistics,
@@ -456,5 +460,270 @@ describe('statistics', () => {
       ok: false,
       reason: 'full',
     })
+  })
+})
+
+describe('the way a session was practiced', () => {
+  it('is saved, and comes back with the session', () => {
+    const sessions = [
+      makeSession({ id: 'a', mode: 'mistake-review' }),
+      makeSession({ id: 'b' }),
+    ]
+    saveSessions(sessions)
+
+    expect(loadPersistedData().sessions).toEqual(sessions)
+    expect(stored(STORAGE_KEYS.sessions)).toEqual(sessions)
+  })
+
+  it('is not needed: a session saved before review mode loads as it was', () => {
+    window.localStorage.setItem(
+      STORAGE_KEYS.sessions,
+      JSON.stringify([makeSession({ id: 'old' })]),
+    )
+
+    const [loaded] = loadPersistedData().sessions
+
+    expect(loaded.id).toBe('old')
+    expect(loaded.mode).toBeUndefined()
+  })
+
+  it('drops a session whose mode makes no sense, and keeps the others', () => {
+    window.localStorage.setItem(
+      STORAGE_KEYS.sessions,
+      JSON.stringify([
+        makeSession({ id: 'good' }),
+        { ...makeSession({ id: 'bad' }), mode: 'something-else' },
+      ]),
+    )
+
+    expect(loadPersistedData().sessions.map((s) => s.id)).toEqual(['good'])
+  })
+})
+
+describe('mistake patterns', () => {
+  const pattern = makeMistakePattern
+  const other = () =>
+    pattern({ firstOperand: 3, secondOperand: 4, correctAnswer: 12 })
+  const savedRaw = (value: unknown) =>
+    window.localStorage.setItem(
+      STORAGE_KEYS.mistakePatterns,
+      typeof value === 'string' ? value : JSON.stringify(value),
+    )
+
+  it('start empty on a first visit', () => {
+    expect(loadPersistedData().mistakePatterns).toEqual([])
+  })
+
+  it('are saved, and come back as they were, in order', () => {
+    const patterns = [
+      pattern({ incorrectCount: 4, similarCorrectCount: 2 }),
+      other(),
+      pattern({
+        operation: 'division',
+        firstOperand: 56,
+        secondOperand: 7,
+        correctAnswer: 8,
+        mastered: true,
+        similarCorrectCount: 3,
+      }),
+    ]
+    saveMistakePatterns(patterns)
+
+    expect(stored(STORAGE_KEYS.mistakePatterns)).toEqual(patterns)
+    expect(loadPersistedData().mistakePatterns).toEqual(patterns)
+  })
+
+  it('are loaded without touching what is saved', () => {
+    savedRaw([pattern()])
+    const before = window.localStorage.getItem(STORAGE_KEYS.mistakePatterns)
+
+    loadPersistedData()
+
+    expect(window.localStorage.getItem(STORAGE_KEYS.mistakePatterns)).toBe(
+      before,
+    )
+  })
+
+  describe('when some saved ones are not usable', () => {
+    it('drop only the bad records and keep the good ones', () => {
+      savedRaw([
+        pattern(),
+        { ...other(), correctAnswer: 13 }, // the answer is wrong
+        'not even an object',
+        { ...other(), incorrectCount: 0 },
+        pattern({ firstOperand: 6, secondOperand: 6, correctAnswer: 36 }),
+        null,
+      ])
+
+      const loaded = loadPersistedData().mistakePatterns
+
+      expect(loaded.map((p) => p.firstOperand)).toEqual([7, 6])
+    })
+
+    it('drop a repeat of a pattern, keeping the first', () => {
+      savedRaw([pattern({ incorrectCount: 5 }), other(), pattern()])
+
+      const loaded = loadPersistedData().mistakePatterns
+
+      expect(loaded).toHaveLength(2)
+      expect(loaded[0].incorrectCount).toBe(5)
+    })
+
+    it('are an empty list when every record is bad, and are not worked out again from the attempts', () => {
+      saveAttempts([makeAttempt({ selfReportedCorrect: false })])
+      savedRaw([{ nonsense: true }])
+
+      expect(loadPersistedData().mistakePatterns).toEqual([])
+    })
+  })
+
+  describe('worked out again from the saved attempts', () => {
+    const wrongSeven = (id: string, at: string) =>
+      makeAttempt({ id, selfReportedCorrect: false, attemptedAt: at })
+
+    beforeEach(() => {
+      saveAttempts([
+        wrongSeven('a1', '2026-03-01T10:00:00.000Z'),
+        makeAttempt({ id: 'a2', selfReportedCorrect: true, firstOperand: 2 }),
+        wrongSeven('a3', '2026-03-03T10:00:00.000Z'),
+        makeAttempt({
+          id: 'a4',
+          selfReportedCorrect: false,
+          firstOperand: 3,
+          secondOperand: 4,
+          correctAnswer: 12,
+        }),
+      ])
+    })
+
+    const expected = () => [
+      expect.objectContaining({
+        firstOperand: 7,
+        incorrectCount: 2,
+        lastIncorrectAt: '2026-03-03T10:00:00.000Z',
+      }),
+      expect.objectContaining({ firstOperand: 3, incorrectCount: 1 }),
+    ]
+
+    it('when none were ever saved, so earlier mistakes are not lost', () => {
+      expect(loadPersistedData().mistakePatterns).toEqual(expected())
+    })
+
+    it('when the saved patterns are not valid JSON', () => {
+      savedRaw('{not json')
+
+      expect(loadPersistedData().mistakePatterns).toEqual(expected())
+    })
+
+    it.each([
+      ['an object', { a: 1 }],
+      ['text', 'patterns'],
+      ['a number', 7],
+    ])('when the saved patterns are %s, not a list', (_, value) => {
+      savedRaw(value)
+
+      expect(loadPersistedData().mistakePatterns).toEqual(expected())
+    })
+
+    it('but never when a list was saved, even an empty one', () => {
+      savedRaw([])
+
+      expect(loadPersistedData().mistakePatterns).toEqual([])
+    })
+
+    it('and the rebuilt patterns are the ones that would have been saved', () => {
+      const rebuilt = loadPersistedData().mistakePatterns
+      saveMistakePatterns(rebuilt)
+
+      expect(loadPersistedData().mistakePatterns).toEqual(rebuilt)
+    })
+  })
+
+  it('are updated, not repeated, when the same question is missed again after a restart', () => {
+    const attempt = (id: string, at: string) =>
+      makeAttempt({ id, selfReportedCorrect: false, attemptedAt: at })
+    saveMistakePatterns(
+      recordMistake([], attempt('a1', '2026-03-01T10:00:00.000Z')),
+    )
+
+    const reloaded = loadPersistedData().mistakePatterns
+    const updated = recordMistake(
+      reloaded,
+      attempt('a2', '2026-03-02T10:00:00.000Z'),
+    )
+
+    expect(updated).toHaveLength(1)
+    expect(updated[0]).toMatchObject({
+      incorrectCount: 2,
+      lastIncorrectAt: '2026-03-02T10:00:00.000Z',
+    })
+  })
+
+  it('are empty when storage cannot be used', () => {
+    restore = blockStorage()
+
+    expect(loadPersistedData().mistakePatterns).toEqual([])
+  })
+
+  it('count as unusable storage when only they cannot be read', () => {
+    savedRaw([pattern()])
+    restore = failReadsOf(STORAGE_KEYS.mistakePatterns)
+
+    const data = loadPersistedData()
+
+    expect(data.problem).toBe('unavailable')
+    expect(data.writable).toBe(false)
+    expect(data.mistakePatterns).toEqual([])
+  })
+
+  it('report "full" when they cannot be saved, without throwing', () => {
+    restore = fillStorage()
+
+    expect(saveMistakePatterns([pattern()])).toEqual({
+      ok: false,
+      reason: 'full',
+    })
+  })
+
+  it('report "unavailable" when storage is blocked, without throwing', () => {
+    restore = blockStorage()
+
+    expect(saveMistakePatterns([pattern()])).toEqual({
+      ok: false,
+      reason: 'unavailable',
+    })
+  })
+})
+
+describe('eraseSavedData', () => {
+  it('removes everything the app saved, and nothing else', () => {
+    saveSettings(createDefaultSettings())
+    saveAttempts([makeAttempt()])
+    window.localStorage.setItem(STORAGE_KEYS.mistakePatterns, '[]')
+    window.localStorage.setItem(STORAGE_KEYS.version, '{"version":1}')
+    window.localStorage.setItem('someOtherApp.token', 'keep me')
+
+    expect(eraseSavedData()).toBe(true)
+
+    for (const key of Object.values(STORAGE_KEYS))
+      expect(window.localStorage.getItem(key)).toBeNull()
+    expect(window.localStorage.getItem('someOtherApp.token')).toBe('keep me')
+  })
+
+  it('succeeds when there is nothing to erase', () => {
+    expect(eraseSavedData()).toBe(true)
+  })
+
+  it('succeeds when storage is switched off, since nothing can be saved', () => {
+    restore = blockStorage()
+
+    expect(eraseSavedData()).toBe(true)
+  })
+
+  it('fails when saved data cannot be removed', () => {
+    saveSettings(createDefaultSettings())
+    restore = breakStorageMethod('removeItem')
+
+    expect(eraseSavedData()).toBe(false)
   })
 })

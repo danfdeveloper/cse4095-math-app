@@ -31,7 +31,10 @@
   grid-area: 1 / 1;
   padding: clamp(1.25rem, 4vw, 2.5rem);
   border-radius: var(--radius-lg);
-  background: var(--color-surface);
+  /* A rainbow stripe along the top edge; the maths itself sits on plain white. */
+  background:
+    var(--rainbow-stripe) 0 0 / 100% 0.5rem no-repeat,
+    var(--color-surface);
   box-shadow: var(--shadow-card);
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;

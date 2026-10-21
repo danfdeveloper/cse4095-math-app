@@ -9,14 +9,17 @@ import { OptionGroup } from '../common/OptionGroup'
 interface SessionLengthSelectorProps {
   value: SessionLength
   onChange: (length: SessionLength) => void
+  /** The group's name; the settings page words it differently. */
+  legend?: string
 }
 
 export function SessionLengthSelector({
   value,
   onChange,
+  legend = 'How many questions?',
 }: SessionLengthSelectorProps) {
   return (
-    <OptionGroup legend="How many questions?">
+    <OptionGroup legend={legend}>
       {SESSION_LENGTH_OPTIONS.map((length) => (
         <OptionCard
           key={length}

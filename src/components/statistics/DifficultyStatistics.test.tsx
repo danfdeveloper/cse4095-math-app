@@ -6,6 +6,7 @@ import {
   recordAttemptInStatistics,
 } from '../../services/statisticsService'
 import { makeAttempt } from '../../test/fixtures'
+import { DIFFICULTY_ACCENT } from '../../constants/accents'
 import { DifficultyStatistics } from './DifficultyStatistics'
 
 function renderRows() {
@@ -80,6 +81,19 @@ describe('DifficultyStatistics', () => {
           'Not practiced yet',
         ),
       ).toBeInTheDocument()
+    }
+  })
+})
+
+describe('DifficultyStatistics and its colours', () => {
+  it('gives each level’s card the colour set for it', () => {
+    renderRows()
+
+    for (const level of [1, 2, 3, 4] as const) {
+      const card = screen.getByRole('article', {
+        name: new RegExp(`^Level ${level}:`),
+      })
+      expect(card).toHaveAttribute('data-accent', DIFFICULTY_ACCENT[level])
     }
   })
 })

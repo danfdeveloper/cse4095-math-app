@@ -1,4 +1,5 @@
 import { useId, type Ref } from 'react'
+import { answerAccent } from '../../constants/accents'
 import type { Question } from '../../types/question'
 import { spokenQuestion } from '../../utils/questionText'
 import { Button } from '../common/Button'
@@ -39,6 +40,10 @@ export function CardFront({
           ? `Question ${questionNumber}`
           : `Question ${questionNumber} of ${totalQuestions}`}
       </p>
+      {/* Says why this question was picked, for a question made from an earlier mistake. */}
+      {question.source === 'mistake-review' && (
+        <p className={styles.tag}>Mistake practice</p>
+      )}
       <h2
         ref={headingRef}
         id={headingId}
@@ -49,10 +54,11 @@ export function CardFront({
         {question.displayText} = ?
       </h2>
       <div className={styles.choices} role="group" aria-labelledby={headingId}>
-        {question.choices.map((choice) => (
+        {question.choices.map((choice, position) => (
           <AnswerChoice
             key={choice}
             value={choice}
+            accent={answerAccent(position)}
             selected={selectedAnswer === choice}
             disabled={locked}
             onSelect={onSelectAnswer}

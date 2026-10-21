@@ -3,6 +3,9 @@
   flex-direction: column;
   gap: var(--space-lg);
   align-items: center;
+  /* Both faces share one size. When the back is taller, keep this content centred. */
+  justify-content: center;
+  height: 100%;
   text-align: center;
 }
 
@@ -10,6 +13,17 @@
   margin: 0;
   color: var(--color-text-muted);
   font-size: 1.125rem;
+  font-weight: 700;
+}
+
+/* A label rather than only a colour: the words say it is practice on an earlier mistake. */
+.tag {
+  margin: calc(var(--space-sm) * -1) 0 0;
+  padding: var(--space-xs) var(--space-md);
+  border-radius: var(--radius-pill);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-size: 1rem;
   font-weight: 700;
 }
 

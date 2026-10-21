@@ -2,7 +2,13 @@ import { act, fireEvent, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { STORAGE_KEYS } from '../services/storageService'
-import { historyState } from '../test/fixtures'
+import {
+  finishedSessionState,
+  historyState,
+  makeMistakePattern,
+  makeSession,
+  reviewSessionState,
+} from '../test/fixtures'
 import { renderApp } from '../test/renderApp'
 import { stored } from '../test/storage'
 import { formatSessionDate } from '../utils/format'
@@ -55,6 +61,7 @@ describe('StatisticsPage', () => {
         'Overall',
         'By operation',
         'By difficulty',
+        'Mistake practice',
         'Recent sessions',
       ]) {
         expect(screen.queryByRole('heading', { name })).not.toBeInTheDocument()
@@ -96,12 +103,18 @@ describe('StatisticsPage', () => {
       expect(overall('Accuracy')).toBe('50%')
     })
 
-    it('has headed sections in order: overall, by operation, by difficulty, recent sessions', () => {
+    it('has headed sections in order: overall, by operation, by difficulty, mistake practice, recent sessions', () => {
       renderStats(twoSessions)
 
       expect(
         screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent),
-      ).toEqual(['Overall', 'By operation', 'By difficulty', 'Recent sessions'])
+      ).toEqual([
+        'Overall',
+        'By operation',
+        'By difficulty',
+        'Mistake practice',
+        'Recent sessions',
+      ])
     })
 
     it('shows the empty state no more', () => {
@@ -272,11 +285,13 @@ describe('StatisticsPage', () => {
     const resetButton = () =>
       screen.getByRole('button', { name: 'Reset Statistics' })
 
-    it('says the settings will stay the same', () => {
+    it('says the settings will stay the same, and that saved mistakes will not', () => {
       renderStats(history)
 
       expect(
-        screen.getByText('Your settings will stay the same.'),
+        screen.getByText(
+          'Your settings will stay the same. Mistakes saved for practice are erased too.',
+        ),
       ).toBeVisible()
     })
 
@@ -458,5 +473,240 @@ describe('StatisticsPage', () => {
     expect(overall('Incorrect')).toBe('1')
     expect(overall('Accuracy')).toBe('0%')
     expect(screen.getByText('In progress')).toBeInTheDocument()
+  })
+})
+
+describe('StatisticsPage and mistakes', () => {
+  const addition = (
+    a: number,
+    b: number,
+    misses: number,
+    lastDay: number,
+    overrides = {},
+  ) =>
+    makeMistakePattern({
+      operation: 'addition',
+      firstOperand: a,
+      secondOperand: b,
+      correctAnswer: a + b,
+      incorrectCount: misses,
+      lastIncorrectAt: day(lastDay),
+      ...overrides,
+    })
+
+  /** A page with some practice behind it, and these mistakes. */
+  function renderWith(
+    patterns: ReturnType<typeof addition>[],
+    counts = { correct: 3, incorrect: 2, mistakeReview: 0 },
+  ) {
+    return renderApp('/statistics', {
+      initialState: {
+        ...finishedSessionState(
+          { operations: ['addition'], difficulty: 2 },
+          counts,
+        ),
+        mistakePatterns: patterns,
+      },
+    })
+  }
+  const section = () => screen.getByRole('region', { name: 'Mistake practice' })
+  const tile = (label: string) =>
+    within(section()).getByText(label, { selector: 'dt' }).nextElementSibling
+      ?.textContent
+
+  it('has a Mistake practice section, after the levels and before recent sessions', () => {
+    renderWith([addition(1, 2, 1, 1)])
+
+    const headings = screen
+      .getAllByRole('heading', { level: 2 })
+      .map((h) => h.textContent)
+    expect(headings.indexOf('Mistake practice')).toBe(
+      headings.indexOf('By difficulty') + 1,
+    )
+    expect(headings.indexOf('Recent sessions')).toBe(
+      headings.indexOf('Mistake practice') + 1,
+    )
+  })
+
+  it('shows the numbers of mistakes, and of similar questions practiced and answered correctly', () => {
+    renderWith(
+      [
+        addition(1, 2, 2, 1),
+        addition(3, 4, 1, 2),
+        addition(5, 6, 1, 3, { mastered: true, similarCorrectCount: 3 }),
+      ],
+      { correct: 3, incorrect: 2, mistakeReview: 4 },
+    )
+
+    expect(tile('Mistakes to practice')).toBe('2')
+    expect(tile('Mistakes mastered')).toBe('1')
+    // Four of the five questions were review questions; the first three were right.
+    expect(tile('Similar questions practiced')).toBe('4')
+    expect(tile('Review questions answered correctly')).toBe('3')
+  })
+
+  it('says so when practice has gone well and there are no mistakes yet', () => {
+    renderWith([], { correct: 5, incorrect: 0, mistakeReview: 0 })
+
+    expect(
+      within(section()).getByText(
+        'No mistakes yet. Questions you get wrong will show up here.',
+      ),
+    ).toBeVisible()
+    expect(tile('Mistakes to practice')).toBe('0')
+  })
+
+  it('lists the most missed operation and number facts, and the mistakes in detail', () => {
+    renderWith([
+      addition(1, 2, 6, 1),
+      addition(3, 4, 2, 2),
+      makeMistakePattern(), // 7 × 8, once
+    ])
+
+    expect(
+      within(section()).getByRole('region', { name: 'Most missed' }),
+    ).toHaveTextContent('Operation missed most: Addition (8 times)')
+    const mistakes = within(
+      within(section()).getByRole('region', { name: 'Your mistakes' }),
+    ).getAllByRole('listitem')
+    expect(mistakes).toHaveLength(3)
+    expect(mistakes[0]).toHaveTextContent('1 + 2 = 3')
+  })
+
+  it('shows mastered mistakes in a separate, closed section', () => {
+    renderWith([
+      addition(1, 2, 3, 1),
+      addition(5, 6, 2, 2, { mastered: true, similarCorrectCount: 3 }),
+    ])
+
+    const summary = within(section()).getByText('Mastered mistakes (1)')
+    expect(summary.closest('details')).not.toHaveAttribute('open')
+  })
+
+  it('shows progress against the number of answers set on the settings page', () => {
+    window.localStorage.setItem(
+      STORAGE_KEYS.settings,
+      JSON.stringify({ masteryThreshold: 5 }),
+    )
+    renderWith([addition(1, 2, 3, 1, { similarCorrectCount: 2 })])
+
+    expect(within(section()).getByText(/2 of 5/)).toBeVisible()
+  })
+
+  it('shows a mistake-review session in the recent sessions as mistake practice', () => {
+    const state = finishedSessionState({}, { correct: 2, incorrect: 1 })
+    renderApp('/statistics', {
+      initialState: {
+        ...state,
+        sessions: [
+          ...state.sessions,
+          makeSession({
+            id: 'review',
+            startedAt: day(20),
+            mode: 'mistake-review',
+            completedAt: day(20),
+          }),
+        ],
+      },
+    })
+
+    const recent = screen.getByRole('region', { name: 'Recent sessions' })
+    expect(within(recent).getAllByText('Mistake practice')).toHaveLength(1)
+  })
+
+  describe('as the student practices', () => {
+    async function answer(
+      user: ReturnType<typeof userEvent.setup>,
+      report: 'right' | 'wrong',
+    ) {
+      const choices = within(screen.getByRole('group')).getAllByRole('button')
+      await user.click(choices[0])
+      await user.click(screen.getByRole('button', { name: 'Flip Card' }))
+      await user.click(
+        screen.getByRole('button', {
+          name: report === 'right' ? 'I Got It Right' : 'I Got It Wrong',
+        }),
+      )
+    }
+
+    it('counts a correct review answer, and moves the mistake’s progress', async () => {
+      const user = userEvent.setup()
+      const source = addition(12, 15, 2, 1)
+      const { router, probe } = renderApp('/practice/session', {
+        initialState: reviewSessionState([source, addition(21, 9, 1, 1)]),
+      })
+      const from = probe().currentQuestion!.mistakePatternId
+
+      await answer(user, 'right')
+      await act(() => router.navigate('/statistics'))
+
+      expect(tile('Similar questions practiced')).toBe('1')
+      expect(tile('Review questions answered correctly')).toBe('1')
+      const item = within(
+        within(section()).getByRole('region', { name: 'Your mistakes' }),
+      )
+        .getAllByRole('listitem')
+        .find((li) =>
+          li.textContent?.includes(from!.split(':').slice(1, 3).join(' + ')),
+        )
+      expect(item).toHaveTextContent('1 of 3')
+    })
+
+    it('counts a wrong review answer as practiced but not as correct, and the missed question joins the mistakes', async () => {
+      const user = userEvent.setup()
+      const { router } = renderApp('/practice/session', {
+        initialState: reviewSessionState([
+          addition(12, 15, 2, 1),
+          addition(21, 9, 1, 1),
+        ]),
+      })
+
+      await answer(user, 'wrong')
+      await act(() => router.navigate('/statistics'))
+
+      expect(tile('Similar questions practiced')).toBe('1')
+      expect(tile('Review questions answered correctly')).toBe('0')
+      expect(tile('Mistakes to practice')).toBe('3')
+    })
+
+    it('moves a mistake to the mastered section once it is mastered', async () => {
+      window.localStorage.setItem(
+        STORAGE_KEYS.settings,
+        JSON.stringify({ masteryThreshold: 1 }),
+      )
+      const user = userEvent.setup()
+      const { router } = renderApp('/practice/session', {
+        initialState: reviewSessionState([
+          addition(12, 15, 2, 1),
+          addition(21, 9, 1, 1),
+        ]),
+      })
+
+      await answer(user, 'right')
+      await act(() => router.navigate('/statistics'))
+
+      expect(tile('Mistakes to practice')).toBe('1')
+      expect(tile('Mistakes mastered')).toBe('1')
+      expect(within(section()).getByText('Mastered mistakes (1)')).toBeVisible()
+    })
+
+    it('erases the mistakes along with the rest when statistics are reset', async () => {
+      const user = userEvent.setup()
+      const { probe } = renderWith([addition(1, 2, 3, 1)])
+      expect(probe().mistakePatterns).toHaveLength(1)
+
+      await user.click(screen.getByRole('button', { name: 'Reset Statistics' }))
+      await user.click(
+        within(screen.getByRole('dialog')).getByRole('button', {
+          name: 'Yes, Erase It',
+        }),
+      )
+
+      expect(probe().mistakePatterns).toEqual([])
+      expect(
+        screen.queryByRole('region', { name: 'Mistake practice' }),
+      ).not.toBeInTheDocument()
+      expect(screen.getByText('No practice yet')).toBeVisible()
+    })
   })
 })

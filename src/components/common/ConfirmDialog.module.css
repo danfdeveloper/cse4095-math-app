@@ -3,7 +3,10 @@
   padding: clamp(1.25rem, 4vw, 2rem);
   border: 0;
   border-radius: var(--radius-lg);
-  background: var(--color-surface);
+  /* A rainbow stripe along the top edge, with the words on plain white. */
+  background:
+    var(--rainbow-stripe) 0 0 / 100% 0.5rem no-repeat,
+    var(--color-surface);
   color: var(--color-text);
   box-shadow: var(--shadow-card);
 }

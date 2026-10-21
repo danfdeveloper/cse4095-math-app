@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
+import { DIFFICULTY_ACCENT } from '../../constants/accents'
 import type { DifficultyLevel } from '../../types/question'
 import { DifficultySelector } from './DifficultySelector'
 
@@ -97,5 +98,25 @@ describe('DifficultySelector', () => {
     await user.keyboard('{ArrowRight}')
 
     expect(level()).toBe('2')
+  })
+})
+
+describe('DifficultySelector and its colours', () => {
+  const accentOf = (name: RegExp | string) =>
+    screen
+      .getByRole('radio', { name })
+      .closest('label')!
+      .getAttribute('data-accent')
+
+  it('gives each level the colour set for it, all different', () => {
+    render(<Harness />)
+
+    const colours = ([1, 2, 3, 4] as const).map((level) =>
+      accentOf(new RegExp(`^Level ${level}:`)),
+    )
+    expect(colours).toEqual(
+      [1, 2, 3, 4].map((l) => DIFFICULTY_ACCENT[l as 1 | 2 | 3 | 4]),
+    )
+    expect(new Set(colours).size).toBe(4)
   })
 })

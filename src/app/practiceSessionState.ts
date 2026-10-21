@@ -1,8 +1,11 @@
+import { DEFAULT_SETTINGS } from '../constants/settings'
+import { forgetMistake, patternsAfterAnswer } from '../services/mistakePatterns'
 import {
   createEmptyStatistics,
   recordAttemptInStatistics,
   removeAttemptFromStatistics,
 } from '../services/statisticsService'
+import type { MistakePattern } from '../types/mistake'
 import type { Question } from '../types/question'
 import type {
   PracticeAttempt,
@@ -30,6 +33,8 @@ export interface PracticeSessionState {
   sessions: PracticeSession[]
   /** Running totals of every answered question, overall and by operation and level. */
   statistics: AppStatistics
+  /** One record for each question the student has answered incorrectly, however often. */
+  mistakePatterns: MistakePattern[]
 }
 
 export const initialPracticeSessionState: PracticeSessionState = {
@@ -39,6 +44,7 @@ export const initialPracticeSessionState: PracticeSessionState = {
   attempts: [],
   sessions: [],
   statistics: createEmptyStatistics(),
+  mistakePatterns: [],
 }
 
 export type PracticeSessionAction =
@@ -52,10 +58,12 @@ export type PracticeSessionAction =
       attempt: PracticeAttempt
       /** Null when that was the last question, which ends the session. */
       nextQuestion: Question | null
+      /** How many correct similar questions master a mistake, from the settings. */
+      masteryThreshold?: number
     }
   | { type: 'sessionEnded'; completedAt: string }
   | { type: 'sessionDiscarded' }
-  /** Erases all practice history and statistics, and any session in progress. */
+  /** Erases all practice history, statistics and mistakes, and any session in progress. */
   | { type: 'historyReset' }
 
 /** Whether a session is in progress: one exists, has not ended, and has a question to show. */
@@ -89,6 +97,8 @@ export function createSession(
     attempted: 0,
     correct: 0,
     incorrect: 0,
+    // Regular practice carries no mode, as sessions saved before review mode do not.
+    ...(config.mode === 'mistake-review' ? { mode: config.mode } : {}),
   }
 }
 
@@ -110,6 +120,9 @@ export function createAttempt(
     selfReportedCorrect: result.selfReportedCorrect,
     difficulty: question.difficulty,
     source: question.source,
+    ...(question.mistakePatternId === undefined
+      ? {}
+      : { mistakePatternId: question.mistakePatternId }),
     attemptedAt: now.toISOString(),
     sessionId: session.id,
   }
@@ -160,6 +173,14 @@ export function practiceSessionReducer(
         attempts: [...state.attempts, attempt],
         sessions: upsertSession(state.sessions, updated),
         statistics: recordAttemptInStatistics(state.statistics, attempt),
+        // An incorrect answer creates or updates its pattern, and an answer to a
+        // review question moves the mistake it came from, in the same step as the attempt.
+        mistakePatterns: patternsAfterAnswer(
+          state.mistakePatterns,
+          currentQuestion,
+          attempt,
+          action.masteryThreshold ?? DEFAULT_SETTINGS.masteryThreshold,
+        ),
       }
     }
 
@@ -202,6 +223,8 @@ export function practiceSessionReducer(
           removed.length === 0
             ? state.statistics
             : removed.reduce(removeAttemptFromStatistics, state.statistics),
+        // ...and the mistakes those answers made.
+        mistakePatterns: removed.reduce(forgetMistake, state.mistakePatterns),
       }
     }
 

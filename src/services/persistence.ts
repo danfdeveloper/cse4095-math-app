@@ -1,21 +1,29 @@
 import { createDefaultSettings } from '../constants/settings'
+import type { MistakePattern } from '../types/mistake'
 import type { PracticeAttempt, PracticeSession } from '../types/session'
 import type { AppSettings } from '../types/settings'
 import type { AppStatistics } from '../types/statistics'
 import { limitSessions } from '../utils/sessionHistory'
 import {
   isAppStatistics,
+  isMistakePattern,
   isPracticeAttempt,
   isPracticeSession,
   keepValidRecords,
   sanitizeSettings,
 } from '../utils/storedDataValidation'
 import {
+  rebuildMistakePatterns,
+  withoutDuplicatePatterns,
+} from './mistakePatterns'
+import {
   createEmptyStatistics,
   statisticsFromAttempts,
 } from './statisticsService'
 import { prepareStorage } from './storageMigrations'
 import {
+  clearAppData,
+  getStorage,
   readRawJson,
   STORAGE_KEYS,
   writeJson,
@@ -31,6 +39,7 @@ export interface PersistedData {
   sessions: PracticeSession[]
   attempts: PracticeAttempt[]
   statistics: AppStatistics
+  mistakePatterns: MistakePattern[]
   /** Set when something went wrong that the student should be told about. */
   problem: StorageProblem | null
   /** False when saving would fail or would overwrite data the app does not understand. */
@@ -62,6 +71,7 @@ export function loadPersistedData(): PersistedData {
     sessions: [],
     attempts: [],
     statistics: createEmptyStatistics(),
+    mistakePatterns: [],
     problem: null,
     writable: false,
   }
@@ -75,12 +85,14 @@ export function loadPersistedData(): PersistedData {
   const sessions = loadRecords(STORAGE_KEYS.sessions, isPracticeSession)
   const attempts = loadRecords(STORAGE_KEYS.attempts, isPracticeAttempt)
   const savedStatistics = readRawJson(STORAGE_KEYS.statistics)
+  const savedPatterns = readRawJson(STORAGE_KEYS.mistakePatterns)
 
   if (
     settings.status === 'unavailable' ||
     sessions.unavailable ||
     attempts.unavailable ||
-    savedStatistics.status === 'unavailable'
+    savedStatistics.status === 'unavailable' ||
+    savedPatterns.status === 'unavailable'
   ) {
     return { ...fresh, problem: 'unavailable' }
   }
@@ -96,9 +108,30 @@ export function loadPersistedData(): PersistedData {
       savedStatistics.status === 'ok' ? savedStatistics.value : null,
       attempts.records,
     ),
+    mistakePatterns: chooseMistakePatterns(
+      savedPatterns.status === 'ok' ? savedPatterns.value : null,
+      attempts.records,
+    ),
     problem: null,
     writable: true,
   }
+}
+
+/**
+ * The saved mistake patterns, with unusable records and repeats dropped. If
+ * there is no saved list, or it is not a list at all (it was never saved, or
+ * it was damaged), the patterns are worked out again from the saved attempts,
+ * so that mistakes made before patterns were saved are not lost. A saved list
+ * is trusted over the attempts, even an empty one.
+ */
+function chooseMistakePatterns(
+  saved: unknown,
+  attempts: readonly PracticeAttempt[],
+): MistakePattern[] {
+  const records = keepValidRecords(saved, isMistakePattern)
+  return records === null
+    ? rebuildMistakePatterns(attempts)
+    : withoutDuplicatePatterns(records)
 }
 
 /**
@@ -114,6 +147,16 @@ function chooseStatistics(
 ): AppStatistics {
   if (isAppStatistics(saved) && saved.attempted >= attempts.length) return saved
   return statisticsFromAttempts(attempts)
+}
+
+/**
+ * Erases everything the app saved. Returns false only when something saved
+ * could not be removed. If storage is switched off nothing is saved, so there
+ * is nothing left to erase and that counts as done.
+ */
+export function eraseSavedData(): boolean {
+  if (getStorage() === null) return true
+  return clearAppData()
 }
 
 export function saveSettings(settings: AppSettings): WriteResult {
@@ -134,4 +177,10 @@ export function saveAttempts(
 
 export function saveStatistics(statistics: AppStatistics): WriteResult {
   return writeJson(STORAGE_KEYS.statistics, statistics)
+}
+
+export function saveMistakePatterns(
+  patterns: readonly MistakePattern[],
+): WriteResult {
+  return writeJson(STORAGE_KEYS.mistakePatterns, patterns)
 }

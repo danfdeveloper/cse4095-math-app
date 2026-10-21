@@ -47,7 +47,8 @@
 
 .detail {
   display: flex;
-  gap: var(--space-md);
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-md);
   justify-content: space-between;
 }
 
@@ -57,7 +58,7 @@
 }
 
 .value {
-  margin: 0;
+  margin: 0 0 0 auto;
   font-weight: 800;
   text-align: right;
 }

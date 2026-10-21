@@ -17,11 +17,20 @@ import type {
   MathOperation,
   Question,
 } from '../types/question'
-import type { PracticeConfig } from '../types/session'
+import type { PracticeConfig, PracticeMode } from '../types/session'
 import { calculateAnswer, isInRange } from './math'
 
 export function isSupportedOperation(value: unknown): value is MathOperation {
   return MATH_OPERATIONS.includes(value as MathOperation)
+}
+
+/** Whether a value is a way of practicing, or left out (which means regular practice). */
+export function isPracticeModeOrAbsent(
+  value: unknown,
+): value is PracticeMode | undefined {
+  return (
+    value === undefined || value === 'regular' || value === 'mistake-review'
+  )
 }
 
 export function isDifficultyLevel(value: unknown): value is DifficultyLevel {
@@ -32,11 +41,12 @@ export function isDifficultyLevel(value: unknown): value is DifficultyLevel {
 export function isPracticeConfig(value: unknown): value is PracticeConfig {
   if (typeof value !== 'object' || value === null) return false
 
-  const { operations, difficulty, sessionLength } = value as Record<
+  const { operations, difficulty, sessionLength, mode } = value as Record<
     string,
     unknown
   >
   return (
+    isPracticeModeOrAbsent(mode) &&
     Array.isArray(operations) &&
     operations.length > 0 &&
     operations.every(isSupportedOperation) &&

@@ -489,28 +489,28 @@ Initial routes:
 
 ### 48. Create the Settings Page
 
-- [ ] Add a sound-effects setting.
-- [ ] Add a card-animation setting.
-- [ ] Add a show-explanations setting.
-- [ ] Add a default session-length setting.
-- [ ] Add a default difficulty setting.
-- [ ] Add default operation settings.
-- [ ] Save settings automatically or through a save button.
+- [x] Add a sound-effects setting.
+- [x] Add a card-animation setting.
+- [x] Add a show-explanations setting.
+- [x] Add a default session-length setting.
+- [x] Add a default difficulty setting.
+- [x] Add default operation settings.
+- [x] Save settings automatically or through a save button.
 
 ### 49. Apply Default Practice Settings
 
-- [ ] Load default operations on the setup page.
-- [ ] Load the default difficulty.
-- [ ] Load the default session length.
-- [ ] Allow defaults to be changed for an individual session.
+- [x] Load default operations on the setup page.
+- [x] Load the default difficulty.
+- [x] Load the default session length.
+- [x] Allow defaults to be changed for an individual session.
 
 ### 50. Add Clear-All-Data Functionality
 
-- [ ] Add a **Clear All Application Data** button.
-- [ ] Show a strong confirmation warning.
-- [ ] Clear settings, sessions, attempts, and mistake patterns.
-- [ ] Restore application defaults.
-- [ ] Return the user to the home page.
+- [x] Add a **Clear All Application Data** button.
+- [x] Show a strong confirmation warning.
+- [x] Clear settings, sessions, attempts, and mistake patterns.
+- [x] Restore application defaults.
+- [x] Return the user to the home page.
 
 ---
 
@@ -518,29 +518,29 @@ Initial routes:
 
 ### 51. Create Mistake Patterns
 
-- [ ] Create a mistake pattern after an incorrect answer.
-- [ ] Store the operation.
-- [ ] Store both operands.
-- [ ] Store the correct answer.
-- [ ] Store the difficulty level.
-- [ ] Store the last incorrect date.
-- [ ] Initialize the incorrect count.
-- [ ] Initialize the similar-correct count.
+- [x] Create a mistake pattern after an incorrect answer.
+- [x] Store the operation.
+- [x] Store both operands.
+- [x] Store the correct answer.
+- [x] Store the difficulty level.
+- [x] Store the last incorrect date.
+- [x] Initialize the incorrect count.
+- [x] Initialize the similar-correct count.
 
 ### 52. Update Existing Mistake Patterns
 
-- [ ] Detect when the same pattern already exists.
-- [ ] Increment its incorrect count.
-- [ ] Update its last-incorrect timestamp.
-- [ ] Reset or reduce mastery progress when appropriate.
-- [ ] Avoid creating duplicate pattern records.
+- [x] Detect when the same pattern already exists.
+- [x] Increment its incorrect count.
+- [x] Update its last-incorrect timestamp.
+- [x] Reset or reduce mastery progress when appropriate.
+- [x] Avoid creating duplicate pattern records.
 
 ### 53. Store Mistake Patterns Locally
 
-- [ ] Save mistake patterns to local storage.
-- [ ] Load mistake patterns at application startup.
-- [ ] Validate stored mistake-pattern data.
-- [ ] Recover gracefully from invalid records.
+- [x] Save mistake patterns to local storage.
+- [x] Load mistake patterns at application startup.
+- [x] Validate stored mistake-pattern data.
+- [x] Recover gracefully from invalid records.
 
 ---
 
@@ -548,35 +548,35 @@ Initial routes:
 
 ### 54. Generate Nearby-Number Questions
 
-- [ ] Create similar questions using nearby operands.
-- [ ] Keep questions within the same difficulty range.
-- [ ] Avoid invalid subtraction questions.
-- [ ] Avoid invalid division questions.
-- [ ] Avoid generating the exact same question too frequently.
+- [x] Create similar questions using nearby operands.
+- [x] Keep questions within the same difficulty range.
+- [x] Avoid invalid subtraction questions.
+- [x] Avoid invalid division questions.
+- [x] Avoid generating the exact same question too frequently.
 
 ### 55. Generate Reversed-Operand Questions
 
-- [ ] Reverse addition operands.
-- [ ] Reverse multiplication operands.
-- [ ] Avoid treating reversed subtraction as equivalent.
-- [ ] Avoid treating reversed division as equivalent.
+- [x] Reverse addition operands.
+- [x] Reverse multiplication operands.
+- [x] Avoid treating reversed subtraction as equivalent.
+- [x] Avoid treating reversed division as equivalent.
 
 ### 56. Generate Fact-Family Questions
 
-- [ ] Generate multiplication questions from division mistakes.
-- [ ] Generate division questions from multiplication mistakes.
-- [ ] Generate subtraction questions from addition mistakes.
-- [ ] Generate addition questions from subtraction mistakes.
-- [ ] Ensure generated questions match the selected difficulty.
+- [x] Generate multiplication questions from division mistakes.
+- [x] Generate division questions from multiplication mistakes.
+- [x] Generate subtraction questions from addition mistakes.
+- [x] Generate addition questions from subtraction mistakes.
+- [x] Ensure generated questions match the selected difficulty.
 
 ### 57. Create the Similar Question Generator Service
 
-- [ ] Accept a mistake pattern.
-- [ ] Select an appropriate similarity strategy.
-- [ ] Generate a valid related question.
-- [ ] Label the question as `mistake-review`.
-- [ ] Attach the related mistake-pattern ID.
-- [ ] Add unit tests for every operation.
+- [x] Accept a mistake pattern.
+- [x] Select an appropriate similarity strategy.
+- [x] Generate a valid related question.
+- [x] Label the question as `mistake-review`.
+- [x] Attach the related mistake-pattern ID.
+- [x] Add unit tests for every operation.
 
 ---
 
@@ -584,42 +584,42 @@ Initial routes:
 
 ### 58. Add Review Mode to Practice Setup
 
-- [ ] Add a regular-practice option.
-- [ ] Add a mistake-review option.
-- [ ] Disable mistake review when no active mistakes exist.
-- [ ] Explain why the option is disabled.
-- [ ] Display the number of active mistake patterns.
+- [x] Add a regular-practice option.
+- [x] Add a mistake-review option.
+- [x] Disable mistake review when no active mistakes exist.
+- [x] Explain why the option is disabled.
+- [x] Display the number of active mistake patterns.
 
 ### 59. Prioritize Mistake Patterns
 
-- [ ] Give higher priority to frequently missed patterns.
-- [ ] Give higher priority to recently missed patterns.
-- [ ] Give higher priority to patterns with little successful review.
-- [ ] Randomize patterns with similar priority.
-- [ ] Test the prioritization logic.
+- [x] Give higher priority to frequently missed patterns.
+- [x] Give higher priority to recently missed patterns.
+- [x] Give higher priority to patterns with little successful review.
+- [x] Randomize patterns with similar priority.
+- [x] Test the prioritization logic.
 
 ### 60. Build Mistake Review Sessions
 
-- [ ] Select active mistake patterns.
-- [ ] Generate similar questions from those patterns.
-- [ ] Mix multiple mistake patterns in one session.
-- [ ] Record which pattern produced each question.
-- [ ] Display mistake-review counts in the session summary.
+- [x] Select active mistake patterns.
+- [x] Generate similar questions from those patterns.
+- [x] Mix multiple mistake patterns in one session.
+- [x] Record which pattern produced each question.
+- [x] Display mistake-review counts in the session summary.
 
 ### 61. Track Similar-Question Success
 
-- [ ] Increment similar-correct count after a correct review answer.
-- [ ] Handle incorrect review answers.
-- [ ] Update the original mistake pattern.
-- [ ] Store the updated pattern locally.
+- [x] Increment similar-correct count after a correct review answer.
+- [x] Handle incorrect review answers.
+- [x] Update the original mistake pattern.
+- [x] Store the updated pattern locally.
 
 ### 62. Implement Mastery Rules
 
-- [ ] Mark a pattern as mastered after three correct similar questions.
-- [ ] Make the mastery threshold configurable.
-- [ ] Exclude mastered patterns from normal review.
-- [ ] Allow mastered patterns to return after a future mistake.
-- [ ] Add tests for mastery transitions.
+- [x] Mark a pattern as mastered after three correct similar questions.
+- [x] Make the mastery threshold configurable.
+- [x] Exclude mastered patterns from normal review.
+- [x] Allow mastered patterns to return after a future mistake.
+- [x] Add tests for mastery transitions.
 
 ---
 
@@ -627,26 +627,26 @@ Initial routes:
 
 ### 63. Add Mistake Statistics
 
-- [ ] Display the number of active mistake patterns.
-- [ ] Display the number of mastered patterns.
-- [ ] Display the number of similar questions practiced.
-- [ ] Display the number of review questions answered correctly.
+- [x] Display the number of active mistake patterns.
+- [x] Display the number of mastered patterns.
+- [x] Display the number of similar questions practiced.
+- [x] Display the number of review questions answered correctly.
 
 ### 64. Identify Frequently Missed Areas
 
-- [ ] Identify the most frequently missed operation.
-- [ ] Identify frequently missed number facts.
-- [ ] Sort mistake patterns by incorrect count.
-- [ ] Handle ties.
-- [ ] Add an empty state when there are no mistakes.
+- [x] Identify the most frequently missed operation.
+- [x] Identify frequently missed number facts.
+- [x] Sort mistake patterns by incorrect count.
+- [x] Handle ties.
+- [x] Add an empty state when there are no mistakes.
 
 ### 65. Add Mistake Details
 
-- [ ] Display active mistake patterns.
-- [ ] Show incorrect counts.
-- [ ] Show mastery progress.
-- [ ] Show the most recent incorrect date.
-- [ ] Allow mastered patterns to be viewed separately.
+- [x] Display active mistake patterns.
+- [x] Show incorrect counts.
+- [x] Show mastery progress.
+- [x] Show the most recent incorrect date.
+- [x] Allow mastered patterns to be viewed separately.
 
 ---
 

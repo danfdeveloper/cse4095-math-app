@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { formatDifficulty, formatList, formatSessionDate } from './format'
+import {
+  formatDay,
+  formatDifficulty,
+  formatFact,
+  formatList,
+  formatSessionDate,
+} from './format'
 
 describe('formatList', () => {
   it.each([
@@ -48,5 +54,32 @@ describe('formatSessionDate', () => {
   it('says so, instead of throwing, for a date it cannot read', () => {
     expect(formatSessionDate('not a date')).toBe('Unknown date')
     expect(formatSessionDate('')).toBe('Unknown date')
+  })
+})
+
+describe('formatFact', () => {
+  it.each([
+    ['addition', 6, 7, 13, '6 + 7 = 13'],
+    ['subtraction', 15, 7, 8, '15 − 7 = 8'],
+    ['multiplication', 7, 8, 56, '7 × 8 = 56'],
+    ['division', 56, 7, 8, '56 ÷ 7 = 8'],
+  ] as const)(
+    'writes %s with its symbol and answer',
+    (op, a, b, answer, text) => {
+      expect(formatFact(op, a, b, answer)).toBe(text)
+    },
+  )
+})
+
+describe('formatDay', () => {
+  it('gives a readable date without the time', () => {
+    const text = formatDay('2026-03-15T12:00:00.000Z')
+
+    expect(text).toMatch(/^Mar 1[56], 2026$/)
+  })
+
+  it('says so, instead of throwing, for a date it cannot read', () => {
+    expect(formatDay('not a date')).toBe('Unknown date')
+    expect(formatDay('')).toBe('Unknown date')
   })
 })

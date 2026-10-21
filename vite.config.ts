@@ -7,5 +7,8 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    // Full-page tests take about a second alone, but several runs at once (or a
+    // busy machine) can push them past the 5 second default.
+    testTimeout: 15_000,
   },
 })

@@ -20,10 +20,18 @@ export function SessionSummary({ session, summary }: SessionSummaryProps) {
     <section className={styles.summary} aria-label="Results">
       <StatTiles
         tiles={[
-          { label: 'Questions attempted', value: summary.attempted },
-          { label: 'Correct', value: summary.correct },
-          { label: 'Incorrect', value: summary.incorrect },
-          { label: 'Accuracy', value: `${summary.accuracy}%` },
+          {
+            label: 'Questions attempted',
+            value: summary.attempted,
+            accent: 'blue',
+          },
+          { label: 'Correct', value: summary.correct, accent: 'green' },
+          { label: 'Incorrect', value: summary.incorrect, accent: 'orange' },
+          {
+            label: 'Accuracy',
+            value: `${summary.accuracy}%`,
+            accent: 'purple',
+          },
         ]}
       />
       <dl className={styles.details}>

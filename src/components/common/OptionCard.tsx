@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import type { Accent } from '../../constants/accents'
 import styles from './OptionCard.module.css'
 
 interface OptionCardProps {
@@ -10,8 +11,15 @@ interface OptionCardProps {
   symbol?: string
   /** Span every column of the surrounding grid. */
   fullRow?: boolean
+  /** A colour for the card. It only decorates: the label and the check mark say the rest. */
+  accent?: Accent
   checked: boolean
   onChange: () => void
+  /**
+   * Cannot be chosen. The description should say why, in words: the dashed
+   * outline and muted fill are not enough to say it on their own.
+   */
+  disabled?: boolean
   /** Shared by every radio in the same group. */
   name?: string
   value?: string
@@ -28,8 +36,10 @@ export function OptionCard({
   description,
   symbol,
   fullRow,
+  accent,
   checked,
   onChange,
+  disabled,
   name,
   value,
 }: OptionCardProps) {
@@ -37,7 +47,10 @@ export function OptionCard({
   const descriptionId = useId()
 
   return (
-    <label className={`${styles.option} ${fullRow ? styles.fullRow : ''}`}>
+    <label
+      className={`${styles.option} ${fullRow ? styles.fullRow : ''}`}
+      data-accent={accent}
+    >
       <input
         className={styles.input}
         type={type}
@@ -45,6 +58,7 @@ export function OptionCard({
         value={value}
         checked={checked}
         onChange={onChange}
+        disabled={disabled}
         aria-labelledby={labelId}
         aria-describedby={description ? descriptionId : undefined}
       />

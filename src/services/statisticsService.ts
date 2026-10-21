@@ -161,6 +161,8 @@ export interface RecentSessionRow {
   finished: boolean
   /** The session still being practiced right now. */
   inProgress: boolean
+  /** A session of practice on earlier mistakes, not regular practice. */
+  mistakePractice: boolean
 }
 
 export interface StatisticsView {
@@ -202,6 +204,7 @@ export function recentSessionRows(
       finished: session.completedAt !== undefined,
       inProgress:
         session.completedAt === undefined && session.id === activeSessionId,
+      mistakePractice: session.mode === 'mistake-review',
     }))
 }
 

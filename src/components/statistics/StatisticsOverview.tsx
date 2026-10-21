@@ -10,10 +10,18 @@ export function StatisticsOverview({ overall }: StatisticsOverviewProps) {
   return (
     <StatTiles
       tiles={[
-        { label: 'Questions attempted', value: overall.attempted },
-        { label: 'Correct', value: overall.correct },
-        { label: 'Incorrect', value: overall.incorrect },
-        { label: 'Accuracy', value: `${overall.accuracy}%` },
+        {
+          label: 'Questions attempted',
+          value: overall.attempted,
+          accent: 'blue',
+        },
+        { label: 'Correct', value: overall.correct, accent: 'green' },
+        { label: 'Incorrect', value: overall.incorrect, accent: 'orange' },
+        {
+          label: 'Accuracy',
+          value: `${overall.accuracy}%`,
+          accent: 'purple',
+        },
       ]}
     />
   )

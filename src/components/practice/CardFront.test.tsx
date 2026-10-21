@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createRef, useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
+import { ANSWER_ACCENTS } from '../../constants/accents'
 import { makeQuestion } from '../../test/fixtures'
 import { CardFront } from './CardFront'
 
@@ -12,6 +13,7 @@ interface HarnessProps {
   initialAnswer?: number | null
   locked?: boolean
   onFlip?: () => void
+  source?: 'regular' | 'mistake-review'
 }
 
 /** Holds the selection like QuestionCard does. */
@@ -21,11 +23,12 @@ function Harness({
   initialAnswer = null,
   locked = false,
   onFlip = () => {},
+  source = 'regular',
 }: HarnessProps) {
   const [selected, setSelected] = useState<number | null>(initialAnswer)
   return (
     <CardFront
-      question={makeQuestion()}
+      question={makeQuestion({ source })}
       questionNumber={questionNumber}
       totalQuestions={totalQuestions ?? undefined}
       selectedAnswer={selected}
@@ -171,5 +174,80 @@ describe('CardFront', () => {
       expect(choice(value)).toBeDisabled()
     }
     expect(choice(54)).toHaveAttribute('aria-pressed', 'true')
+  })
+})
+
+describe('CardFront for a question made from an earlier mistake', () => {
+  it('says it is mistake practice, in words', () => {
+    render(<Harness source="mistake-review" />)
+
+    expect(screen.getByText('Mistake practice')).toBeVisible()
+  })
+
+  it('does not say so for a regular question', () => {
+    render(<Harness source="regular" />)
+
+    expect(screen.queryByText('Mistake practice')).not.toBeInTheDocument()
+  })
+
+  it('keeps the question number and the question as they were', () => {
+    render(
+      <Harness source="mistake-review" questionNumber={2} totalQuestions={5} />,
+    )
+
+    expect(screen.getByText('Question 2 of 5')).toBeVisible()
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent(
+      '7 × 8 = ?',
+    )
+  })
+
+  it('works in continuous practice', () => {
+    render(
+      <Harness
+        source="mistake-review"
+        totalQuestions={null}
+        questionNumber={4}
+      />,
+    )
+
+    expect(screen.getByText('Question 4')).toBeVisible()
+    expect(screen.getByText('Mistake practice')).toBeVisible()
+  })
+})
+
+describe('CardFront and the colours of its answers', () => {
+  const accents = () =>
+    within(screen.getByRole('group'))
+      .getAllByRole('button')
+      .map((button) => button.getAttribute('data-accent'))
+
+  it('gives the four choices four different colours', () => {
+    render(<Harness />)
+
+    expect(accents()).toEqual([...ANSWER_ACCENTS])
+    expect(new Set(accents()).size).toBe(4)
+  })
+
+  it('uses none that suggests a choice is right or wrong', () => {
+    render(<Harness />)
+
+    for (const accent of accents()) {
+      expect(['green', 'red', 'orange', 'yellow']).not.toContain(accent)
+    }
+  })
+
+  it('does not change a choice’s name or its picked state with its colour', async () => {
+    const user = userEvent.setup()
+    render(<Harness />)
+
+    await user.click(
+      within(screen.getByRole('group')).getAllByRole('button')[1],
+    )
+
+    const picked = within(screen.getByRole('group'))
+      .getAllByRole('button')
+      .filter((b) => b.getAttribute('aria-pressed') === 'true')
+    expect(picked).toHaveLength(1)
+    expect(picked[0]).toHaveTextContent('✓')
   })
 })

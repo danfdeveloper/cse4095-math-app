@@ -33,7 +33,8 @@ interface Operands {
   secondOperand: number
 }
 
-function buildQuestion(
+/** A complete question for these operands, with its answer and answer choices. */
+export function buildQuestion(
   operation: MathOperation,
   difficulty: DifficultyLevel,
   { firstOperand, secondOperand }: Operands,

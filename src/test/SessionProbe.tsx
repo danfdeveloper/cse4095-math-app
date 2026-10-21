@@ -6,8 +6,14 @@ import { usePracticeSession } from '../hooks/usePracticeSession'
  * query (a random id such as "…bad…" once tripped a check for unkind words).
  */
 export function SessionProbe() {
-  const { session, currentQuestion, currentQuestionIndex, attempts, isActive } =
-    usePracticeSession()
+  const {
+    session,
+    currentQuestion,
+    currentQuestionIndex,
+    attempts,
+    mistakePatterns,
+    isActive,
+  } = usePracticeSession()
 
   return (
     <div
@@ -17,8 +23,17 @@ export function SessionProbe() {
       data-state={JSON.stringify({
         session,
         currentQuestionId: currentQuestion?.id ?? null,
+        currentQuestion: currentQuestion
+          ? {
+              source: currentQuestion.source,
+              mistakePatternId: currentQuestion.mistakePatternId ?? null,
+              displayText: currentQuestion.displayText,
+              difficulty: currentQuestion.difficulty,
+            }
+          : null,
         currentQuestionIndex,
         attempts,
+        mistakePatterns,
         isActive,
       })}
     />

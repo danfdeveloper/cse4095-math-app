@@ -1,6 +1,8 @@
 .card {
   padding: var(--space-lg);
   border: 3px solid var(--color-border);
+  /* A band of the card's colour; it only decorates, as the title says what the card is. */
+  border-top: 0.5rem solid var(--accent-bright, var(--color-border));
   border-radius: var(--radius-lg);
   background: var(--color-surface);
 }
@@ -16,7 +18,7 @@
 .symbol {
   flex: none;
   width: 1.25em;
-  color: var(--color-primary);
+  color: var(--accent-deep, var(--color-primary));
   font-size: 1.4em;
   font-weight: 800;
   line-height: 1;

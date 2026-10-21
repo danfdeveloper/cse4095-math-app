@@ -5,10 +5,13 @@ import {
   practiceSessionReducer,
   type PracticeSessionState,
 } from '../app/practiceSessionState'
+import { mistakePatternId } from '../services/mistakePatterns'
+import { generateReviewQuestion } from '../services/reviewQuestions'
 import {
   generateNextQuestion,
   generateQuestionForOperations,
 } from '../services/questionGenerator'
+import type { MistakePattern } from '../types/mistake'
 import type { Question } from '../types/question'
 import type {
   PracticeAttempt,
@@ -50,6 +53,38 @@ export function activeSessionState(
       config.difficulty,
     ),
   })
+}
+
+/**
+ * A mistake-review session under way, asking about the given mistakes: Level 2
+ * addition and subtraction with 5 questions, unless overridden.
+ */
+export function reviewSessionState(
+  patterns: MistakePattern[],
+  overrides: Partial<PracticeConfig> = {},
+): PracticeSessionState {
+  const config: PracticeConfig = {
+    operations: ['addition', 'subtraction'],
+    difficulty: 2,
+    sessionLength: 5,
+    ...overrides,
+    mode: 'mistake-review',
+  }
+  const firstQuestion = generateReviewQuestion(patterns, config, {
+    threshold: 3,
+    now: new Date(),
+  })
+  if (firstQuestion === null) {
+    throw new Error('The mistakes given leave nothing to review.')
+  }
+  return practiceSessionReducer(
+    { ...initialPracticeSessionState, mistakePatterns: patterns },
+    {
+      type: 'sessionStarted',
+      session: createSession(config),
+      firstQuestion,
+    },
+  )
 }
 
 /** A session that has ended. */
@@ -141,6 +176,29 @@ export function makeAttempt(
     sessionId: 'session-1',
     ...overrides,
   }
+}
+
+/**
+ * A saved mistake pattern, as read back from storage: 7 × 8 missed once at
+ * Level 2. Its ID always matches its contents, as saved ones do.
+ */
+export function makeMistakePattern(
+  overrides: Partial<MistakePattern> = {},
+): MistakePattern {
+  const pattern: MistakePattern = {
+    id: '',
+    operation: 'multiplication',
+    firstOperand: 7,
+    secondOperand: 8,
+    correctAnswer: 56,
+    difficulty: 2,
+    incorrectCount: 1,
+    similarCorrectCount: 0,
+    lastIncorrectAt: '2026-03-04T10:01:00.000Z',
+    mastered: false,
+    ...overrides,
+  }
+  return { ...pattern, id: overrides.id ?? mistakePatternId(pattern) }
 }
 
 interface SessionSpec {

@@ -209,12 +209,18 @@ describe('QuestionCard back', () => {
     const user = userEvent.setup()
     const { unmount } = renderCard()
     await selectAndFlip(user)
-    expect(screen.getByText(/7 groups of 8/)).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', {
+        name: 'How to solve it: Splitting with fives',
+      }),
+    ).toBeInTheDocument()
     unmount()
 
     renderCard({ showExplanation: false })
     await selectAndFlip(user)
-    expect(screen.queryByText(/7 groups of 8/)).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: /How to solve it/ }),
+    ).not.toBeInTheDocument()
   })
 })
 

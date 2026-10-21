@@ -7,17 +7,24 @@ import {
 } from 'react'
 import { useSaveOnChange } from '../hooks/useSaveOnChange'
 import {
+  eraseSavedData,
   loadPersistedData,
   saveAttempts,
+  saveMistakePatterns,
   saveSessions,
   saveSettings,
   saveStatistics,
   type StorageProblem,
 } from '../services/persistence'
+import { patternsAfterAnswer } from '../services/mistakePatterns'
 import {
   generateNextQuestion,
   generateQuestionForOperations,
 } from '../services/questionGenerator'
+import {
+  generateReviewQuestion,
+  recentQuestionsOf,
+} from '../services/reviewQuestions'
 import type { WriteFailure, WriteResult } from '../services/storageService'
 import type { PracticeConfig, QuestionResult } from '../types/session'
 import type { AppSettings } from '../types/settings'
@@ -51,7 +58,8 @@ interface AppProviderProps {
   initialState?: PracticeSessionState
 }
 
-type SavedItem = 'settings' | 'sessions' | 'attempts' | 'statistics'
+type SavedItem =
+  'settings' | 'sessions' | 'attempts' | 'statistics' | 'mistakePatterns'
 
 interface StorageStatus {
   /**
@@ -82,7 +90,7 @@ function problemFrom(
  * are done here.
  */
 export function AppProvider({ children, initialState }: AppProviderProps) {
-  const [loaded] = useState(loadPersistedData)
+  const [loaded, setLoaded] = useState(loadPersistedData)
   const [settings, setSettings] = useState<AppSettings>(loaded.settings)
   const [state, dispatch] = useReducer(
     practiceSessionReducer,
@@ -91,6 +99,7 @@ export function AppProvider({ children, initialState }: AppProviderProps) {
       sessions: loaded.sessions,
       attempts: loaded.attempts,
       statistics: loaded.statistics,
+      mistakePatterns: loaded.mistakePatterns,
     },
   )
   const [status, setStatus] = useState<StorageStatus>({
@@ -157,19 +166,41 @@ export function AppProvider({ children, initialState }: AppProviderProps) {
     ),
   )
 
-  const startSession = useCallback((config: PracticeConfig): boolean => {
-    if (!isPracticeConfig(config)) return false
+  useSaveOnChange(
+    state.mistakePatterns,
+    useCallback(
+      (value: PracticeSessionState['mistakePatterns']) =>
+        persist('mistakePatterns', () => saveMistakePatterns(value)),
+      [persist],
+    ),
+  )
 
-    dispatch({
-      type: 'sessionStarted',
-      session: createSession(config),
-      firstQuestion: generateQuestionForOperations(
-        config.operations,
-        config.difficulty,
-      ),
-    })
-    return true
-  }, [])
+  const { masteryThreshold } = settings
+
+  const startSession = useCallback(
+    (config: PracticeConfig): boolean => {
+      if (!isPracticeConfig(config)) return false
+
+      // A review session asks about the mistakes its choices cover. With none
+      // to practice there is nothing to start.
+      const firstQuestion =
+        config.mode === 'mistake-review'
+          ? generateReviewQuestion(state.mistakePatterns, config, {
+              threshold: masteryThreshold,
+              now: new Date(),
+            })
+          : generateQuestionForOperations(config.operations, config.difficulty)
+      if (firstQuestion === null) return false
+
+      dispatch({
+        type: 'sessionStarted',
+        session: createSession(config),
+        firstQuestion,
+      })
+      return true
+    },
+    [state.mistakePatterns, masteryThreshold],
+  )
 
   const recordResult = useCallback(
     (result: QuestionResult) => {
@@ -182,20 +213,45 @@ export function AppProvider({ children, initialState }: AppProviderProps) {
         return
       }
 
+      const attempt = createAttempt(session, currentQuestion, result)
       dispatch({
         type: 'resultRecorded',
-        attempt: createAttempt(session, currentQuestion, result),
+        attempt,
         // No question is made after the last one of a fixed session.
         nextQuestion: isFinalQuestion(session)
           ? null
-          : generateNextQuestion(
-              session.operations,
-              session.difficulty,
-              currentQuestion,
-            ),
+          : session.mode === 'mistake-review'
+            ? // Chosen from the mistakes as this answer leaves them. When none still
+              // need practice (the last was just mastered) there is no next question,
+              // and the session ends.
+              generateReviewQuestion(
+                patternsAfterAnswer(
+                  state.mistakePatterns,
+                  currentQuestion,
+                  attempt,
+                  masteryThreshold,
+                ),
+                session,
+                {
+                  threshold: masteryThreshold,
+                  now: new Date(),
+                  previousPatternId: currentQuestion.mistakePatternId,
+                  recent: recentQuestionsOf(
+                    session,
+                    state.attempts,
+                    currentQuestion,
+                  ),
+                },
+              )
+            : generateNextQuestion(
+                session.operations,
+                session.difficulty,
+                currentQuestion,
+              ),
+        masteryThreshold,
       })
     },
-    [state],
+    [state, masteryThreshold],
   )
 
   const endSession = useCallback(() => {
@@ -212,6 +268,21 @@ export function AppProvider({ children, initialState }: AppProviderProps) {
 
   const updateSettings = useCallback((changes: Partial<AppSettings>) => {
     setSettings((current) => sanitizeSettings({ ...current, ...changes }))
+  }, [])
+
+  const clearAllData = useCallback((): boolean => {
+    if (!eraseSavedData()) return false
+
+    // Loading from the emptied storage is exactly a first visit: the defaults,
+    // the version stamped again, and saving switched back on even if the old
+    // data had been left alone because it came from a newer version.
+    const fresh = loadPersistedData()
+    setLoaded(fresh)
+    setSettings(fresh.settings)
+    dispatch({ type: 'historyReset' })
+    // Saving problems clear themselves: every item is saved again, and each
+    // successful save removes that item's problem.
+    return true
   }, [])
 
   const dismiss = useCallback(() => {
@@ -241,8 +312,8 @@ export function AppProvider({ children, initialState }: AppProviderProps) {
     ],
   )
   const settingsApi = useMemo<AppSettingsApi>(
-    () => ({ settings, updateSettings }),
-    [settings, updateSettings],
+    () => ({ settings, updateSettings, clearAllData }),
+    [settings, updateSettings, clearAllData],
   )
   const statusApi = useMemo<StorageStatusApi>(
     () => ({

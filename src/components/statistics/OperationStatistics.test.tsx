@@ -6,6 +6,7 @@ import {
   recordAttemptInStatistics,
 } from '../../services/statisticsService'
 import { makeAttempt } from '../../test/fixtures'
+import { OPERATION_ACCENT } from '../../constants/accents'
 import { OperationStatistics } from './OperationStatistics'
 
 function renderRows() {
@@ -70,6 +71,24 @@ describe('OperationStatistics', () => {
           'Not practiced yet',
         ),
       ).toBeInTheDocument()
+    }
+  })
+})
+
+describe('OperationStatistics and its colours', () => {
+  it('gives each operation’s card the colour set for it', () => {
+    renderRows()
+
+    for (const [operation, label] of [
+      ['addition', 'Addition'],
+      ['subtraction', 'Subtraction'],
+      ['multiplication', 'Multiplication'],
+      ['division', 'Division'],
+    ] as const) {
+      expect(screen.getByRole('article', { name: label })).toHaveAttribute(
+        'data-accent',
+        OPERATION_ACCENT[operation],
+      )
     }
   })
 })

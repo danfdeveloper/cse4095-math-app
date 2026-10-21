@@ -1,7 +1,12 @@
 import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
-import { activeSessionState, finishedSessionState } from '../test/fixtures'
+import {
+  activeSessionState,
+  finishedSessionState,
+  makeMistakePattern,
+  reviewSessionState,
+} from '../test/fixtures'
 import { renderApp } from '../test/renderApp'
 import type { PracticeConfig } from '../types/session'
 
@@ -241,29 +246,256 @@ describe('SessionSummaryPage', () => {
     })
 
     describe('Practice Mistakes', () => {
-      it('is not available yet, and says so in words', () => {
-        renderSummary()
+      const mistakesNote = () =>
+        document.getElementById('practice-mistakes-note')?.textContent
+
+      it('is available after a session with mistakes, and says how many there are', () => {
+        renderSummary({ correct: 2, incorrect: 1 })
 
         const button = screen.getByRole('button', { name: 'Practice Mistakes' })
-        expect(button).toBeDisabled()
+        expect(button).toBeEnabled()
         expect(button).toHaveAccessibleDescription(
-          'Practice Mistakes is coming soon!',
+          'You have 1 mistake to practice for these choices.',
         )
-        expect(
-          screen.getByText('Practice Mistakes is coming soon!'),
-        ).toBeVisible()
       })
 
-      it('does nothing when pressed', async () => {
+      it('counts every mistake of the session’s choices', () => {
+        renderSummary({ correct: 0, incorrect: 12 })
+
+        // Different questions are different mistakes; a repeat is one mistake.
+        const shown = Number(
+          /You have (\d+) mistakes?/.exec(mistakesNote()!)?.[1],
+        )
+        expect(shown).toBeGreaterThanOrEqual(1)
+        expect(shown).toBeLessThanOrEqual(12)
+      })
+
+      it('starts a review of the session’s choices', async () => {
         const user = userEvent.setup()
-        const { router, probe } = renderSummary()
+        const { router, probe } = renderSummary(
+          { correct: 1, incorrect: 3 },
+          { operations: ['addition'], difficulty: 2, sessionLength: 7 },
+        )
+        const finishedId = probe().session?.id
 
         await user.click(
           screen.getByRole('button', { name: 'Practice Mistakes' }),
         )
 
+        expect(router.state.location.pathname).toBe('/practice/session')
+        expect(probe().session).toMatchObject({
+          mode: 'mistake-review',
+          operations: ['addition'],
+          difficulty: 2,
+          sessionLength: 7,
+          attempted: 0,
+        })
+        expect(probe().session?.id).not.toBe(finishedId)
+        expect(probe().isActive).toBe(true)
+        expect(screen.getByText('Question 1 of 7')).toBeInTheDocument()
+        expect(screen.getByText('Mistake practice')).toBeVisible()
+      })
+
+      it('asks a question made from one of the mistakes, marked as review', async () => {
+        const user = userEvent.setup()
+        const { probe } = renderSummary({ correct: 0, incorrect: 3 })
+        const mistakeIds = probe().mistakePatterns.map((pattern) => pattern.id)
+
+        await user.click(
+          screen.getByRole('button', { name: 'Practice Mistakes' }),
+        )
+
+        const { session, currentQuestion } = probe()
+        expect(session?.mode).toBe('mistake-review')
+        expect(currentQuestion?.source).toBe('mistake-review')
+        expect(mistakeIds).toContain(currentQuestion?.mistakePatternId)
+        expect(currentQuestion?.difficulty).toBe(session?.difficulty)
+      })
+
+      it('is not available when there are no mistakes, and says so in words', async () => {
+        const user = userEvent.setup()
+        const { router, probe } = renderSummary({ correct: 4, incorrect: 0 })
+
+        const button = screen.getByRole('button', { name: 'Practice Mistakes' })
+        expect(button).toBeDisabled()
+        expect(button).toHaveAccessibleDescription(
+          'You have no mistakes to practice for these choices yet.',
+        )
+        expect(
+          screen.getByText(
+            'You have no mistakes to practice for these choices yet.',
+          ),
+        ).toBeVisible()
+
+        await user.click(button)
         expect(router.state.location.pathname).toBe('/practice/summary')
         expect(probe().isActive).toBe(false)
+      })
+
+      it('does not count mistakes of other operations or another level', () => {
+        const state = finishedSessionState(
+          { operations: ['addition'], difficulty: 2 },
+          { correct: 3, incorrect: 0 },
+        )
+        renderApp('/practice/summary', {
+          initialState: {
+            ...state,
+            mistakePatterns: [
+              makeMistakePattern(), // multiplication, Level 2
+              makeMistakePattern({
+                operation: 'addition',
+                firstOperand: 3,
+                secondOperand: 4,
+                correctAnswer: 7,
+                difficulty: 3, // addition, but another level
+              }),
+            ],
+          },
+        })
+
+        expect(
+          screen.getByRole('button', { name: 'Practice Mistakes' }),
+        ).toBeDisabled()
+      })
+
+      it('does not count mistakes that are already mastered', () => {
+        const state = finishedSessionState(
+          { operations: ['addition'], difficulty: 2 },
+          { correct: 3, incorrect: 0 },
+        )
+        renderApp('/practice/summary', {
+          initialState: {
+            ...state,
+            mistakePatterns: [
+              makeMistakePattern({
+                operation: 'addition',
+                firstOperand: 3,
+                secondOperand: 4,
+                correctAnswer: 7,
+                similarCorrectCount: 3,
+                mastered: true,
+              }),
+            ],
+          },
+        })
+
+        expect(
+          screen.getByRole('button', { name: 'Practice Mistakes' }),
+        ).toBeDisabled()
+      })
+
+      it('counts a mistake of the session’s choices even if the session had none', () => {
+        const state = finishedSessionState(
+          { operations: ['addition'], difficulty: 2 },
+          { correct: 3, incorrect: 0 },
+        )
+        renderApp('/practice/summary', {
+          initialState: {
+            ...state,
+            mistakePatterns: [
+              makeMistakePattern({
+                operation: 'addition',
+                firstOperand: 3,
+                secondOperand: 4,
+                correctAnswer: 7,
+              }),
+              makeMistakePattern({
+                operation: 'addition',
+                firstOperand: 5,
+                secondOperand: 6,
+                correctAnswer: 11,
+              }),
+            ],
+          },
+        })
+
+        expect(
+          screen.getByRole('button', { name: 'Practice Mistakes' }),
+        ).toHaveAccessibleDescription(
+          'You have 2 mistakes to practice for these choices.',
+        )
+      })
+
+      it('works from the keyboard', async () => {
+        const user = userEvent.setup()
+        const { router } = renderSummary({ correct: 1, incorrect: 2 })
+
+        screen.getByRole('button', { name: 'Practice Mistakes' }).focus()
+        await user.keyboard('{Enter}')
+
+        expect(router.state.location.pathname).toBe('/practice/session')
+      })
+    })
+
+    describe('after a mistake-review session', () => {
+      const addition = (a: number, b: number, overrides = {}) =>
+        makeMistakePattern({
+          operation: 'addition',
+          firstOperand: a,
+          secondOperand: b,
+          correctAnswer: a + b,
+          ...overrides,
+        })
+
+      function finishedReview(patterns: ReturnType<typeof addition>[]) {
+        const state = reviewSessionState(patterns)
+        return {
+          ...state,
+          currentQuestion: null,
+          session: { ...state.session!, completedAt: new Date().toISOString() },
+        }
+      }
+
+      it('Practice Again starts another review, not regular practice', async () => {
+        const user = userEvent.setup()
+        const { router, probe } = renderApp('/practice/summary', {
+          initialState: finishedReview([addition(3, 4), addition(5, 6)]),
+        })
+
+        await user.click(screen.getByRole('button', { name: 'Practice Again' }))
+
+        expect(router.state.location.pathname).toBe('/practice/session')
+        expect(probe().session).toMatchObject({ mode: 'mistake-review' })
+        expect(screen.getByText('Mistake practice')).toBeVisible()
+      })
+
+      it('says when every mistake is mastered, and Practice Again waits', async () => {
+        const user = userEvent.setup()
+        const { router, probe } = renderApp('/practice/summary', {
+          initialState: {
+            ...finishedReview([addition(3, 4)]),
+            mistakePatterns: [
+              addition(3, 4, { similarCorrectCount: 3, mastered: true }),
+            ],
+          },
+        })
+
+        const again = screen.getByRole('button', { name: 'Practice Again' })
+        expect(again).toBeDisabled()
+        expect(again).toHaveAccessibleDescription(
+          'Great work! You have mastered every mistake for these choices.',
+        )
+        expect(
+          screen.getByRole('button', { name: 'Practice Mistakes' }),
+        ).toBeDisabled()
+
+        await user.click(again)
+        expect(router.state.location.pathname).toBe('/practice/summary')
+        expect(probe().isActive).toBe(false)
+      })
+
+      it('keeps the review in the choices that Change Settings carries over', async () => {
+        const user = userEvent.setup()
+        const { router } = renderApp('/practice/summary', {
+          initialState: finishedReview([addition(3, 4)]),
+        })
+
+        await user.click(screen.getByRole('link', { name: 'Change Settings' }))
+
+        expect(router.state.location.pathname).toBe('/practice/setup')
+        expect(
+          screen.getByRole('radio', { name: 'Practice mistakes' }),
+        ).toBeChecked()
       })
     })
 

@@ -511,6 +511,23 @@ describe('recentSessionRows', () => {
       accuracy: 70,
       finished: true,
       inProgress: false,
+      mistakePractice: false,
+    })
+  })
+
+  it('marks a mistake-review session, and no other', () => {
+    const rows = recentSessionRows([
+      makeSession({ id: 'a', startedAt: at(1), mode: 'mistake-review' }),
+      makeSession({ id: 'b', startedAt: at(2), mode: 'regular' }),
+      makeSession({ id: 'c', startedAt: at(3) }),
+    ])
+
+    expect(
+      Object.fromEntries(rows.map((r) => [r.id, r.mistakePractice])),
+    ).toEqual({
+      a: true,
+      b: false,
+      c: false,
     })
   })
 

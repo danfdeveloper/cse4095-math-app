@@ -352,6 +352,20 @@ describe('isPracticeConfig', () => {
     expect(isPracticeConfig(valid)).toBe(true)
   })
 
+  it.each([undefined, 'regular', 'mistake-review'])(
+    'accepts a way of practicing of %j',
+    (mode) => {
+      expect(isPracticeConfig({ ...valid, mode })).toBe(true)
+    },
+  )
+
+  it.each([['review'], [''], [7], [null], [true], ['Mistake-Review']])(
+    'rejects a way of practicing of %j',
+    (mode) => {
+      expect(isPracticeConfig({ ...valid, mode })).toBe(false)
+    },
+  )
+
   it('accepts continuous practice and every operation', () => {
     expect(
       isPracticeConfig({

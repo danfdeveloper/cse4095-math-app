@@ -24,6 +24,8 @@
 .primary {
   background: var(--color-primary);
   color: var(--color-on-primary);
+  /* A solid edge underneath, so it looks like a chunky button that can be pressed. */
+  box-shadow: 0 4px 0 var(--color-primary-active);
 }
 
 .primary:hover {
@@ -34,11 +36,13 @@
 .primary:active {
   border-color: var(--color-primary-active);
   background: var(--color-primary-active);
+  box-shadow: 0 1px 0 var(--color-primary-active);
 }
 
 .secondary {
   background: var(--color-surface);
   color: var(--color-primary);
+  box-shadow: 0 4px 0 var(--color-border);
 }
 
 .secondary:hover {
@@ -49,16 +53,18 @@
   background: var(--color-primary-soft);
   border-color: var(--color-primary-active);
   color: var(--color-primary-active);
+  box-shadow: 0 1px 0 var(--color-border);
 }
 
 .button:active {
-  transform: translateY(2px);
+  transform: translateY(3px);
 }
 
 .button:disabled {
   border-color: var(--color-disabled-bg);
   background: var(--color-disabled-bg);
   color: var(--color-disabled-text);
+  box-shadow: none;
   cursor: not-allowed;
   transform: none;
 }

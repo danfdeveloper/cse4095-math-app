@@ -1,6 +1,13 @@
 .header {
-  border-bottom: 6px solid var(--color-accent);
   background: var(--color-surface);
+}
+
+/* A rainbow stripe along the bottom. It only decorates, and it stands still. */
+.header::after {
+  display: block;
+  height: 0.5rem;
+  background: var(--rainbow-stripe);
+  content: '';
 }
 
 .inner {
@@ -15,6 +22,10 @@
 }
 
 .brand {
+  display: inline-flex;
+  align-items: center;
+  /* As tall as the navigation links beside it, so it is as easy to tap. */
+  min-height: 2.75rem;
   color: var(--color-primary);
   font-size: var(--font-size-lg);
   font-weight: 800;

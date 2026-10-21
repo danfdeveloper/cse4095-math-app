@@ -74,3 +74,19 @@ export function failWritesTo(
   })
   return () => spy.mockRestore()
 }
+
+/** Reading one key fails, as a damaged store can. Every other key reads normally. */
+export function failReadsOf(key: string): () => void {
+  const proto = storagePrototype()
+  const original = proto.getItem
+  const spy = vi.spyOn(proto, 'getItem').mockImplementation(function (
+    this: Storage,
+    name: string,
+  ) {
+    if (name === key) {
+      throw new DOMException('Storage failed', 'SecurityError')
+    }
+    return original.call(this, name)
+  })
+  return () => spy.mockRestore()
+}

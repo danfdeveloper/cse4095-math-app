@@ -3,12 +3,19 @@ import {
   DEFAULT_SETTINGS,
   MASTERY_THRESHOLD_RANGE,
 } from '../constants/settings'
+import { mistakePatternId } from '../services/mistakePatterns'
+import type { MistakePattern } from '../types/mistake'
 import type { MathOperation } from '../types/question'
 import type { PracticeAttempt, PracticeSession } from '../types/session'
 import type { AppSettings } from '../types/settings'
 import type { AppStatistics, OperationStatistics } from '../types/statistics'
 import { DIFFICULTY_LEVELS, MATH_OPERATIONS } from '../constants/practice'
-import { isDifficultyLevel, isSupportedOperation } from './validation'
+import { calculateAnswer } from './math'
+import {
+  isDifficultyLevel,
+  isPracticeModeOrAbsent,
+  isSupportedOperation,
+} from './validation'
 
 /*
  * Checks for data read back from localStorage. Anything in storage may have
@@ -60,6 +67,8 @@ export function isPracticeAttempt(value: unknown): value is PracticeAttempt {
     typeof value.selfReportedCorrect === 'boolean' &&
     isDifficultyLevel(value.difficulty) &&
     (value.source === 'regular' || value.source === 'mistake-review') &&
+    (value.mistakePatternId === undefined ||
+      isNonEmptyString(value.mistakePatternId)) &&
     isTimestamp(value.attemptedAt) &&
     isNonEmptyString(value.sessionId)
   )
@@ -75,11 +84,52 @@ export function isPracticeSession(value: unknown): value is PracticeSession {
     value.operations.length > 0 &&
     isDifficultyLevel(value.difficulty) &&
     isSessionLength(value.sessionLength) &&
+    isPracticeModeOrAbsent(value.mode) &&
     isCount(value.attempted) &&
     isCount(value.correct) &&
     isCount(value.incorrect) &&
     // The totals must add up, or the record cannot be trusted.
     value.correct + value.incorrect === value.attempted
+  )
+}
+
+/**
+ * A saved mistake pattern is only used if it is complete, its numbers are real
+ * numbers of this kind of question (so the answer really is the answer), its
+ * ID is the one its contents give it, and it records at least one mistake.
+ * Later phases make questions from these fields and trust them.
+ */
+export function isMistakePattern(value: unknown): value is MistakePattern {
+  if (!(
+    isRecord(value) &&
+    isNonEmptyString(value.id) &&
+    isSupportedOperation(value.operation) &&
+    isCount(value.firstOperand) &&
+    isCount(value.secondOperand) &&
+    isCount(value.correctAnswer) &&
+    isDifficultyLevel(value.difficulty) &&
+    isCount(value.incorrectCount) &&
+    value.incorrectCount >= 1 &&
+    isCount(value.similarCorrectCount) &&
+    isTimestamp(value.lastIncorrectAt) &&
+    typeof value.mastered === 'boolean'
+  )) {
+    return false
+  }
+
+  return (
+    calculateAnswer(
+      value.operation,
+      value.firstOperand,
+      value.secondOperand,
+    ) === value.correctAnswer &&
+    value.id ===
+      mistakePatternId({
+        operation: value.operation,
+        firstOperand: value.firstOperand,
+        secondOperand: value.secondOperand,
+        difficulty: value.difficulty,
+      })
   )
 }
 

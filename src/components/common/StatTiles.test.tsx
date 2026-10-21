@@ -40,3 +40,32 @@ describe('StatTiles', () => {
     expect(container.querySelectorAll('dt')).toHaveLength(0)
   })
 })
+
+describe('StatTiles and their colour', () => {
+  it('gives a tile the accent it was given, and none otherwise', () => {
+    const { container } = render(
+      <StatTiles
+        tiles={[
+          { label: 'Correct', value: 7, accent: 'green' },
+          { label: 'Accuracy', value: '70%' },
+        ]}
+      />,
+    )
+
+    const [first, second] = [...container.querySelectorAll('dl > div')]
+    expect(first).toHaveAttribute('data-accent', 'green')
+    expect(second).not.toHaveAttribute('data-accent')
+  })
+
+  it('still says what each number is in words', () => {
+    render(
+      <StatTiles
+        tiles={[{ label: 'Incorrect', value: 3, accent: 'orange' }]}
+      />,
+    )
+
+    expect(
+      screen.getByText('Incorrect', { selector: 'dt' }).nextElementSibling,
+    ).toHaveTextContent('3')
+  })
+})

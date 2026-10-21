@@ -1,0 +1,149 @@
+.block {
+  margin-top: var(--space-xl);
+}
+
+.subheading {
+  margin: 0 0 var(--space-md);
+  font-size: var(--font-size-lg);
+}
+
+.none {
+  margin: var(--space-md) 0 0;
+  color: var(--color-text-muted);
+  font-weight: 700;
+}
+
+.label {
+  color: var(--color-text-muted);
+  font-weight: 700;
+}
+
+.mostMissed {
+  margin: 0 0 var(--space-md);
+}
+
+/* The facts, numbered because the order is the point: most missed first. */
+.facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin: var(--space-xs) 0 0;
+  padding: 0;
+  list-style-position: inside;
+}
+
+.fact {
+  padding: var(--space-sm) var(--space-md);
+  border: 3px solid var(--color-border);
+  /* A band of the operation's colour; the fact itself says which operation it is. */
+  border-left: 0.5rem solid var(--accent-bright, var(--color-border));
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.factText {
+  font-size: var(--font-size-lg);
+  font-weight: 800;
+}
+
+.factMisses {
+  margin-left: var(--space-md);
+  color: var(--color-text-muted);
+  font-weight: 700;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  padding: var(--space-lg);
+  border: 3px solid var(--color-border);
+  border-left: 0.5rem solid var(--accent-bright, var(--color-border));
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.itemFact {
+  margin: 0 0 var(--space-md);
+  font-size: var(--font-size-lg);
+  font-weight: 800;
+}
+
+/* Two columns of facts when there is room, one on phones, so values do not squeeze and wrap. */
+.details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: var(--space-sm) var(--space-lg);
+  margin: 0;
+}
+
+.detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-md);
+  justify-content: space-between;
+}
+
+.value {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  align-items: center;
+  justify-content: flex-end;
+  margin: 0 0 0 auto;
+  font-weight: 800;
+  text-align: right;
+}
+
+/* The words next to it say the same thing, so the bar is only decoration. */
+.bar {
+  display: inline-block;
+  width: 5rem;
+  height: 0.75rem;
+  overflow: hidden;
+  border: 2px solid var(--color-primary);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  background: var(--color-primary);
+}
+
+.mastered {
+  margin-top: var(--space-lg);
+}
+
+.summary {
+  display: flex;
+  align-items: center;
+  min-height: 3rem;
+  padding: var(--space-xs) var(--space-md);
+  border: 3px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  font-size: var(--font-size-lg);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.summary:hover {
+  border-color: var(--color-primary);
+}
+
+.summary:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 3px;
+}
+
+.mastered[open] > .summary {
+  margin-bottom: var(--space-md);
+}

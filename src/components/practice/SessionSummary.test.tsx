@@ -126,3 +126,18 @@ describe('SessionSummary', () => {
     ).not.toBeInTheDocument()
   })
 })
+
+describe('SessionSummary and its colours', () => {
+  it('colours its four numbers as the statistics page does, and never in red', () => {
+    renderSummary()
+
+    const accentOf = (label: string) =>
+      screen
+        .getByText(label, { selector: 'dt' })
+        .parentElement?.getAttribute('data-accent')
+    expect(accentOf('Questions attempted')).toBe('blue')
+    expect(accentOf('Correct')).toBe('green')
+    expect(accentOf('Incorrect')).toBe('orange')
+    expect(accentOf('Accuracy')).toBe('purple')
+  })
+})

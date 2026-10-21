@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { createEmptyStatistics } from '../services/statisticsService'
-import { makeQuestion } from '../test/fixtures'
+import {
+  makeMistakePattern,
+  makeQuestion,
+  reviewSessionState,
+} from '../test/fixtures'
 import type { PracticeConfig } from '../types/session'
 import {
   createAttempt,
@@ -113,6 +117,34 @@ describe('createAttempt', () => {
       attemptedAt: '2026-03-04T10:31:00.000Z',
       sessionId: session.id,
     })
+  })
+
+  it('records which mistake a review question was made from', () => {
+    const session = createSession(config)
+    const review = makeQuestion({
+      id: 'r1',
+      source: 'mistake-review',
+      mistakePatternId: 'multiplication:7:7:2',
+    })
+
+    const attempt = createAttempt(session, review, {
+      selectedAnswer: 54,
+      selfReportedCorrect: true,
+    })
+
+    expect(attempt).toMatchObject({
+      source: 'mistake-review',
+      mistakePatternId: 'multiplication:7:7:2',
+    })
+  })
+
+  it('records no mistake for a regular question, not even an empty one', () => {
+    const attempt = createAttempt(createSession(config), q1, {
+      selectedAnswer: 54,
+      selfReportedCorrect: true,
+    })
+
+    expect('mistakePatternId' in attempt).toBe(false)
   })
 
   it('gives every attempt its own id', () => {
@@ -740,5 +772,358 @@ describe('practiceSessionReducer', () => {
       expect(a.statistics).not.toBe(b.statistics)
       expect(a.statistics).not.toBe(initialPracticeSessionState.statistics)
     })
+  })
+})
+
+describe('mistake patterns in the practice state', () => {
+  /** Answers the question on screen, reporting right or wrong. */
+  function answer(
+    state: PracticeSessionState,
+    correct: boolean,
+    next: ReturnType<typeof makeQuestion> | null,
+    at = new Date('2026-03-04T10:00:00.000Z'),
+  ) {
+    return practiceSessionReducer(state, {
+      type: 'resultRecorded',
+      attempt: createAttempt(
+        state.session!,
+        state.currentQuestion!,
+        { selectedAnswer: 54, selfReportedCorrect: correct },
+        at,
+      ),
+      nextQuestion: next,
+    })
+  }
+
+  const sixTimesFour = (id: string) =>
+    makeQuestion({
+      id,
+      firstOperand: 6,
+      secondOperand: 4,
+      correctAnswer: 24,
+      displayText: '6 × 4',
+    })
+
+  it('starts with none', () => {
+    expect(initialPracticeSessionState.mistakePatterns).toEqual([])
+    expect(started().mistakePatterns).toEqual([])
+  })
+
+  it('creates the pattern in the same step as the incorrect attempt', () => {
+    const state = answer(started(), false, q2)
+
+    expect(state.attempts).toHaveLength(1)
+    expect(state.mistakePatterns).toEqual([
+      expect.objectContaining({
+        operation: 'multiplication',
+        firstOperand: 7,
+        secondOperand: 8,
+        correctAnswer: 56,
+        incorrectCount: 1,
+        similarCorrectCount: 0,
+        mastered: false,
+        lastIncorrectAt: '2026-03-04T10:00:00.000Z',
+      }),
+    ])
+  })
+
+  it('creates none for a correct attempt, and does not even replace the list', () => {
+    const before = started()
+
+    const state = answer(before, true, q2)
+
+    expect(state.attempts).toHaveLength(1)
+    expect(state.mistakePatterns).toBe(before.mistakePatterns)
+  })
+
+  it('creates one for the last question of a session too', () => {
+    const state = answer(started({ sessionLength: 1 }), false, null)
+
+    expect(state.session?.completedAt).toBeDefined()
+    expect(state.mistakePatterns).toHaveLength(1)
+  })
+
+  it('updates the pattern when the same question is missed again', () => {
+    const first = answer(started(), false, q2)
+    const second = answer(
+      first,
+      false,
+      q3,
+      new Date('2026-03-04T10:05:00.000Z'),
+    )
+
+    expect(second.mistakePatterns).toHaveLength(1)
+    expect(second.mistakePatterns[0]).toMatchObject({
+      incorrectCount: 2,
+      lastIncorrectAt: '2026-03-04T10:05:00.000Z',
+    })
+  })
+
+  it('gives a different question its own pattern', () => {
+    const first = answer(started(), false, sixTimesFour('q2'))
+    const second = answer(first, false, q3)
+
+    expect(second.mistakePatterns.map((p) => p.firstOperand)).toEqual([7, 6])
+    expect(second.mistakePatterns.map((p) => p.incorrectCount)).toEqual([1, 1])
+  })
+
+  it('does not count a report twice, or for a question that is no longer on screen', () => {
+    const state = started()
+    const attempt = createAttempt(state.session!, q1, {
+      selectedAnswer: 54,
+      selfReportedCorrect: false,
+    })
+    const action = {
+      type: 'resultRecorded' as const,
+      attempt,
+      nextQuestion: q2,
+    }
+
+    const once = practiceSessionReducer(state, action)
+    const twice = practiceSessionReducer(once, action)
+
+    expect(twice).toBe(once)
+    expect(twice.mistakePatterns[0].incorrectCount).toBe(1)
+  })
+
+  it('keeps the patterns when a session ends, and when the next one starts', () => {
+    let state = answer(started(), false, q2)
+    state = practiceSessionReducer(state, {
+      type: 'sessionEnded',
+      completedAt: '2026-03-04T11:00:00.000Z',
+    })
+    expect(state.mistakePatterns).toHaveLength(1)
+
+    state = practiceSessionReducer(state, {
+      type: 'sessionStarted',
+      session: createSession(config),
+      firstQuestion: q1,
+    })
+    expect(state.mistakePatterns).toHaveLength(1)
+
+    state = answer(state, false, q2)
+    expect(state.mistakePatterns).toHaveLength(1)
+    expect(state.mistakePatterns[0].incorrectCount).toBe(2)
+  })
+
+  describe('when a session is discarded', () => {
+    it('takes back the mistakes its answers made', () => {
+      const state = answer(started(), false, q2)
+
+      const discarded = practiceSessionReducer(state, {
+        type: 'sessionDiscarded',
+      })
+
+      expect(discarded.attempts).toEqual([])
+      expect(discarded.mistakePatterns).toEqual([])
+    })
+
+    it('leaves mistakes from earlier sessions', () => {
+      let state = answer(started(), false, q2)
+      state = practiceSessionReducer(state, {
+        type: 'sessionEnded',
+        completedAt: '2026-03-04T11:00:00.000Z',
+      })
+      state = practiceSessionReducer(state, {
+        type: 'sessionStarted',
+        session: createSession(config),
+        firstQuestion: q1,
+      })
+      state = answer(state, false, q2)
+      expect(state.mistakePatterns[0].incorrectCount).toBe(2)
+
+      const discarded = practiceSessionReducer(state, {
+        type: 'sessionDiscarded',
+      })
+
+      expect(discarded.mistakePatterns).toHaveLength(1)
+      expect(discarded.mistakePatterns[0].incorrectCount).toBe(1)
+    })
+
+    it('changes nothing when no answers were given', () => {
+      const state = started()
+
+      const discarded = practiceSessionReducer(state, {
+        type: 'sessionDiscarded',
+      })
+
+      expect(discarded.mistakePatterns).toBe(state.mistakePatterns)
+    })
+
+    it('does not touch patterns that were already there when the session started', () => {
+      const saved = [makeMistakePattern({ incorrectCount: 4 })]
+      const state = practiceSessionReducer(
+        { ...initialPracticeSessionState, mistakePatterns: saved },
+        {
+          type: 'sessionStarted',
+          session: createSession(config),
+          firstQuestion: q1,
+        },
+      )
+
+      const discarded = practiceSessionReducer(state, {
+        type: 'sessionDiscarded',
+      })
+
+      expect(discarded.mistakePatterns).toEqual(saved)
+    })
+  })
+
+  it('are erased with the rest of the history', () => {
+    const state = answer(started(), false, q2)
+
+    const reset = practiceSessionReducer(state, { type: 'historyReset' })
+
+    expect(reset.mistakePatterns).toEqual([])
+  })
+
+  it('never change the list they were given', () => {
+    const state = answer(started(), false, q2)
+    const snapshot = JSON.stringify(state.mistakePatterns)
+
+    answer(state, false, q3)
+
+    expect(JSON.stringify(state.mistakePatterns)).toBe(snapshot)
+  })
+})
+
+describe('creating a mistake-review session', () => {
+  it('records the way of practicing for review, and nothing for regular practice', () => {
+    expect(createSession({ ...config, mode: 'mistake-review' })).toMatchObject({
+      mode: 'mistake-review',
+    })
+    expect('mode' in createSession(config)).toBe(false)
+    expect('mode' in createSession({ ...config, mode: 'regular' })).toBe(false)
+  })
+})
+
+describe('answering questions in a mistake-review session', () => {
+  const addition = (a: number, b: number, overrides = {}) =>
+    makeMistakePattern({
+      operation: 'addition',
+      firstOperand: a,
+      secondOperand: b,
+      correctAnswer: a + b,
+      ...overrides,
+    })
+
+  /** Answers the question on screen. */
+  function answer(
+    state: PracticeSessionState,
+    correct: boolean,
+    next: ReturnType<typeof makeQuestion> | null,
+    masteryThreshold?: number,
+  ) {
+    return practiceSessionReducer(state, {
+      type: 'resultRecorded',
+      attempt: createAttempt(state.session!, state.currentQuestion!, {
+        selectedAnswer: 1,
+        selfReportedCorrect: correct,
+      }),
+      nextQuestion: next,
+      masteryThreshold,
+    })
+  }
+
+  const progressOf = (state: PracticeSessionState, id: string) =>
+    state.mistakePatterns.find((p) => p.id === id)
+
+  it('moves the mistake forward after a correct answer, and adds no new mistake', () => {
+    const source = addition(12, 15)
+    const state = reviewSessionState([source])
+    const id = state.currentQuestion!.mistakePatternId!
+
+    const next = answer(state, true, makeQuestion({ id: 'next' }))
+
+    expect(next.mistakePatterns).toHaveLength(1)
+    expect(progressOf(next, id)?.similarCorrectCount).toBe(1)
+  })
+
+  it('moves it back after an incorrect answer, and the missed question becomes a mistake', () => {
+    const source = addition(12, 15, { similarCorrectCount: 2 })
+    const state = reviewSessionState([source])
+    const asked = state.currentQuestion!
+
+    const next = answer(state, false, makeQuestion({ id: 'next' }))
+
+    expect(progressOf(next, source.id)?.similarCorrectCount).toBe(1)
+    expect(next.mistakePatterns).toHaveLength(2)
+    expect(
+      next.mistakePatterns.find(
+        (p) =>
+          p.firstOperand === asked.firstOperand &&
+          p.secondOperand === asked.secondOperand &&
+          p.operation === asked.operation,
+      ),
+    ).toMatchObject({ incorrectCount: 1 })
+  })
+
+  it('masters the mistake on the answer that reaches the settings threshold', () => {
+    const source = addition(12, 15, { similarCorrectCount: 2 })
+    const state = reviewSessionState([source])
+
+    const next = answer(state, true, makeQuestion({ id: 'next' }), 3)
+
+    expect(progressOf(next, source.id)).toMatchObject({
+      similarCorrectCount: 3,
+      mastered: true,
+    })
+  })
+
+  it('goes by the threshold it is given', () => {
+    const source = addition(12, 15)
+    const state = reviewSessionState([source])
+
+    expect(progressOf(answer(state, true, null, 1), source.id)?.mastered).toBe(
+      true,
+    )
+    expect(progressOf(answer(state, true, null, 2), source.id)?.mastered).toBe(
+      false,
+    )
+  })
+
+  it('uses the standard threshold when none is given', () => {
+    const state = reviewSessionState([
+      addition(12, 15, { similarCorrectCount: 2 }),
+    ])
+
+    expect(answer(state, true, null).mistakePatterns[0].mastered).toBe(true)
+  })
+
+  it('keeps the progress when the session ends on that answer', () => {
+    const source = addition(12, 15)
+    const state = reviewSessionState([source], { sessionLength: 1 })
+
+    const ended = answer(state, true, null)
+
+    expect(ended.session?.completedAt).toBeDefined()
+    expect(progressOf(ended, source.id)?.similarCorrectCount).toBe(1)
+  })
+
+  it('counts the answer as a review question in the history', () => {
+    const state = reviewSessionState([addition(12, 15)])
+
+    const next = answer(state, true, makeQuestion({ id: 'next' }))
+
+    expect(next.attempts[0].source).toBe('mistake-review')
+  })
+
+  it('does nothing to the mistakes for an answer that is not counted', () => {
+    const source = addition(12, 15)
+    const state = reviewSessionState([source])
+    const stale = createAttempt(
+      state.session!,
+      { ...state.currentQuestion!, id: 'an-earlier-question' },
+      { selectedAnswer: 1, selfReportedCorrect: true },
+    )
+
+    const next = practiceSessionReducer(state, {
+      type: 'resultRecorded',
+      attempt: stale,
+      nextQuestion: null,
+    })
+
+    expect(next).toBe(state)
+    expect(next.mistakePatterns[0].similarCorrectCount).toBe(0)
   })
 })

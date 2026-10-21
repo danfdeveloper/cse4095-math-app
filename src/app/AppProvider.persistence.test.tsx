@@ -5,6 +5,7 @@ import { useSettings } from '../hooks/useSettings'
 import { usePracticeSession } from '../hooks/usePracticeSession'
 import { useStorageStatus } from '../hooks/useStorageStatus'
 import { STORAGE_KEYS } from '../services/storageService'
+import { mistakePatternId } from '../services/mistakePatterns'
 import { makeAttempt, makeSession } from '../test/fixtures'
 import {
   blockStorage,
@@ -1081,5 +1082,467 @@ describe('resetting statistics', () => {
 
     expect(result.current.practice.statistics.attempted).toBe(0)
     expect(result.current.status.problem).toBeNull()
+  })
+})
+
+describe('clearing all application data', () => {
+  const savedSettings = () =>
+    stored(STORAGE_KEYS.settings) as Record<string, unknown>
+
+  function playAndChangeSettings() {
+    const hook = mount()
+    act(() =>
+      hook.result.current.settings.updateSettings({
+        cardAnimationEnabled: false,
+        masteryThreshold: 6,
+        defaultOperations: ['division'],
+      }),
+    )
+    act(
+      () =>
+        void hook.result.current.practice.startSession({
+          ...config,
+          sessionLength: 'continuous',
+        }),
+    )
+    for (const answer of [right, wrong, right]) {
+      act(() => hook.result.current.practice.recordResult(answer))
+    }
+    window.localStorage.setItem('someOtherApp.token', 'keep me')
+    return hook
+  }
+
+  const clearAll = (hook: ReturnType<typeof mount>) => {
+    let cleared: boolean | undefined
+    act(() => {
+      cleared = hook.result.current.settings.clearAllData()
+    })
+    return cleared
+  }
+
+  it('reports that it worked', () => {
+    const hook = playAndChangeSettings()
+
+    expect(clearAll(hook)).toBe(true)
+  })
+
+  it('erases the settings, sessions, attempts, totals and mistake patterns', () => {
+    const hook = playAndChangeSettings()
+    expect(savedAttempts()).toHaveLength(3)
+    expect(stored(STORAGE_KEYS.mistakePatterns)).toHaveLength(1)
+
+    clearAll(hook)
+
+    expect(savedAttempts()).toEqual([])
+    expect(savedSessions()).toEqual([])
+    expect(stored(STORAGE_KEYS.statistics)).toMatchObject({ attempted: 0 })
+    expect(stored(STORAGE_KEYS.mistakePatterns)).toEqual([])
+    expect(stored(STORAGE_KEYS.settings)).toEqual(DEFAULT_SETTINGS)
+  })
+
+  it('restores the defaults, and empties history and any session in progress', () => {
+    const hook = playAndChangeSettings()
+    expect(hook.result.current.practice.isActive).toBe(true)
+
+    clearAll(hook)
+
+    expect(hook.result.current.settings.settings).toEqual(DEFAULT_SETTINGS)
+    expect(hook.result.current.practice.session).toBeNull()
+    expect(hook.result.current.practice.isActive).toBe(false)
+    expect(hook.result.current.practice.currentQuestion).toBeNull()
+    expect(hook.result.current.practice.attempts).toEqual([])
+    expect(hook.result.current.practice.sessions).toEqual([])
+    expect(hook.result.current.practice.statistics.attempted).toBe(0)
+  })
+
+  it('leaves data that belongs to other sites alone', () => {
+    const hook = playAndChangeSettings()
+
+    clearAll(hook)
+
+    expect(window.localStorage.getItem('someOtherApp.token')).toBe('keep me')
+  })
+
+  it('stays erased after a browser restart', () => {
+    const first = playAndChangeSettings()
+    clearAll(first)
+    first.unmount()
+
+    const { result } = mount()
+
+    expect(result.current.settings.settings).toEqual(DEFAULT_SETTINGS)
+    expect(result.current.practice.attempts).toEqual([])
+    expect(result.current.practice.sessions).toEqual([])
+    expect(result.current.status.problem).toBeNull()
+  })
+
+  it('does not leave settings changes made before the erase to be saved again', () => {
+    const hook = playAndChangeSettings()
+
+    clearAll(hook)
+
+    expect(savedSettings().defaultOperations).toEqual([])
+    expect(savedSettings().cardAnimationEnabled).toBe(true)
+    expect(savedSettings().masteryThreshold).toBe(3)
+  })
+
+  it('stamps the version again', () => {
+    const hook = playAndChangeSettings()
+
+    clearAll(hook)
+
+    expect(stored(STORAGE_KEYS.version)).toEqual({ version: 1 })
+  })
+
+  it('goes on saving what the student does afterwards', () => {
+    const hook = playAndChangeSettings()
+    clearAll(hook)
+
+    act(() =>
+      hook.result.current.settings.updateSettings({ showExplanations: false }),
+    )
+    act(() => void hook.result.current.practice.startSession(config))
+    act(() => hook.result.current.practice.recordResult(wrong))
+
+    expect(savedSettings().showExplanations).toBe(false)
+    expect(savedAttempts()).toHaveLength(1)
+  })
+
+  it('clears a saving problem that was being shown', () => {
+    const hook = mount()
+    restore = fillStorage()
+    act(
+      () =>
+        void hook.result.current.settings.updateSettings({
+          showExplanations: false,
+        }),
+    )
+    expect(hook.result.current.status.problem).toBe('full')
+    restore()
+    restore = undefined
+
+    clearAll(hook)
+
+    expect(hook.result.current.status.problem).toBeNull()
+  })
+
+  it('works when there was nothing saved', () => {
+    const hook = mount()
+
+    expect(clearAll(hook)).toBe(true)
+    expect(hook.result.current.settings.settings).toEqual(DEFAULT_SETTINGS)
+  })
+
+  describe('when the saved data cannot be removed', () => {
+    it('reports it, and changes nothing', () => {
+      const hook = playAndChangeSettings()
+      restore = breakStorageMethod('removeItem')
+
+      expect(clearAll(hook)).toBe(false)
+
+      expect(hook.result.current.settings.settings.cardAnimationEnabled).toBe(
+        false,
+      )
+      expect(hook.result.current.practice.isActive).toBe(true)
+      expect(hook.result.current.practice.attempts).toHaveLength(3)
+      expect(savedAttempts()).toHaveLength(3)
+    })
+  })
+
+  describe('when storage is switched off', () => {
+    it('still resets the app, since nothing could have been saved', () => {
+      restore = blockStorage()
+      const hook = mount()
+      act(() =>
+        hook.result.current.settings.updateSettings({
+          showExplanations: false,
+        }),
+      )
+      act(() => void hook.result.current.practice.startSession(config))
+
+      expect(clearAll(hook)).toBe(true)
+
+      expect(hook.result.current.settings.settings).toEqual(DEFAULT_SETTINGS)
+      expect(hook.result.current.practice.session).toBeNull()
+      expect(hook.result.current.status.problem).toBe('unavailable')
+    })
+  })
+
+  describe('when the saved data came from a newer version', () => {
+    it('erases it, and lets the app save again', () => {
+      window.localStorage.setItem(STORAGE_KEYS.version, '{"version":9}')
+      window.localStorage.setItem(STORAGE_KEYS.attempts, '["from the future"]')
+      const hook = mount()
+      expect(hook.result.current.status.problem).toBe('newer-version')
+
+      expect(clearAll(hook)).toBe(true)
+      expect(hook.result.current.status.problem).toBeNull()
+      act(() =>
+        hook.result.current.settings.updateSettings({
+          showExplanations: false,
+        }),
+      )
+
+      expect(stored(STORAGE_KEYS.version)).toEqual({ version: 1 })
+      expect(window.localStorage.getItem(STORAGE_KEYS.attempts)).not.toContain(
+        'from the future',
+      )
+      expect(savedSettings().showExplanations).toBe(false)
+    })
+  })
+})
+
+describe('mistake patterns', () => {
+  const savedPatterns = () =>
+    (stored(STORAGE_KEYS.mistakePatterns) ?? []) as {
+      id: string
+      operation: string
+      firstOperand: number
+      secondOperand: number
+      correctAnswer: number
+      difficulty: number
+      incorrectCount: number
+      similarCorrectCount: number
+      lastIncorrectAt: string
+      mastered: boolean
+    }[]
+
+  function startSession(hook: ReturnType<typeof mount>) {
+    act(() => void hook.result.current.practice.startSession(config))
+  }
+
+  it('saves nothing for opening the app or starting a session', () => {
+    const hook = mount()
+    startSession(hook)
+
+    expect(window.localStorage.getItem(STORAGE_KEYS.mistakePatterns)).toBeNull()
+  })
+
+  it('saves a pattern as soon as an incorrect answer is reported', () => {
+    const hook = mount()
+    startSession(hook)
+    const question = hook.result.current.practice.currentQuestion!
+
+    act(() => hook.result.current.practice.recordResult(wrong))
+
+    expect(savedPatterns()).toEqual([
+      {
+        id: mistakePatternId(question),
+        operation: 'addition',
+        firstOperand: question.firstOperand,
+        secondOperand: question.secondOperand,
+        correctAnswer: question.correctAnswer,
+        difficulty: 1,
+        incorrectCount: 1,
+        similarCorrectCount: 0,
+        lastIncorrectAt: expect.stringMatching(/^\d{4}-\d\d-\d\dT/),
+        mastered: false,
+      },
+    ])
+    expect(hook.result.current.practice.mistakePatterns).toEqual(
+      savedPatterns(),
+    )
+  })
+
+  it('saves nothing for a correct answer', () => {
+    const hook = mount()
+    startSession(hook)
+
+    act(() => hook.result.current.practice.recordResult(right))
+
+    expect(window.localStorage.getItem(STORAGE_KEYS.mistakePatterns)).toBeNull()
+    expect(hook.result.current.practice.mistakePatterns).toEqual([])
+  })
+
+  it('has one pattern for each different question missed, and counts each', () => {
+    const hook = mount()
+    startSession(hook)
+    const missed: string[] = []
+    for (let i = 0; i < 3; i++) {
+      missed.push(
+        mistakePatternId(hook.result.current.practice.currentQuestion!),
+      )
+      act(() => hook.result.current.practice.recordResult(wrong))
+    }
+
+    const unique = new Set(missed)
+    expect(savedPatterns()).toHaveLength(unique.size)
+    expect(
+      savedPatterns().reduce((sum, pattern) => sum + pattern.incorrectCount, 0),
+    ).toBe(3)
+    expect(
+      savedPatterns()
+        .map((pattern) => pattern.id)
+        .sort(),
+    ).toEqual([...unique].sort())
+  })
+
+  it('does not add one for a correct answer that follows an incorrect one', () => {
+    const hook = mount()
+    startSession(hook)
+    act(() => hook.result.current.practice.recordResult(wrong))
+    act(() => hook.result.current.practice.recordResult(right))
+
+    expect(savedPatterns()).toHaveLength(1)
+  })
+
+  it('are still there after a browser restart', () => {
+    const first = mount()
+    startSession(first)
+    act(() => first.result.current.practice.recordResult(wrong))
+    const before = savedPatterns()
+    first.unmount()
+
+    const second = mount()
+
+    expect(second.result.current.practice.mistakePatterns).toEqual(before)
+    expect(second.result.current.status.problem).toBeNull()
+  })
+
+  it('are worked out from earlier attempts when none were ever saved', () => {
+    window.localStorage.setItem(
+      STORAGE_KEYS.attempts,
+      JSON.stringify([
+        makeAttempt({ id: 'a1', selfReportedCorrect: false }),
+        makeAttempt({ id: 'a2', selfReportedCorrect: true, firstOperand: 2 }),
+        makeAttempt({ id: 'a3', selfReportedCorrect: false }),
+      ]),
+    )
+
+    const { result } = mount()
+
+    expect(result.current.practice.mistakePatterns).toEqual([
+      expect.objectContaining({ firstOperand: 7, incorrectCount: 2 }),
+    ])
+  })
+
+  it('are worked out again when the saved patterns are damaged', () => {
+    window.localStorage.setItem(
+      STORAGE_KEYS.attempts,
+      JSON.stringify([makeAttempt({ id: 'a1', selfReportedCorrect: false })]),
+    )
+    window.localStorage.setItem(STORAGE_KEYS.mistakePatterns, '{{{')
+
+    const { result } = mount()
+
+    expect(result.current.practice.mistakePatterns).toHaveLength(1)
+  })
+
+  it('keep the mistakes worked out from earlier attempts once the student makes another', () => {
+    window.localStorage.setItem(
+      STORAGE_KEYS.attempts,
+      JSON.stringify([
+        makeAttempt({
+          id: 'a1',
+          selfReportedCorrect: false,
+          operation: 'multiplication',
+          firstOperand: 7,
+          secondOperand: 8,
+          correctAnswer: 56,
+        }),
+      ]),
+    )
+    const hook = mount()
+    startSession(hook)
+
+    act(() => hook.result.current.practice.recordResult(wrong))
+
+    expect(savedPatterns().map((pattern) => pattern.operation)).toEqual([
+      'multiplication',
+      'addition',
+    ])
+  })
+
+  describe('when the student resets their statistics', () => {
+    it('are erased, in the app and in what is saved', () => {
+      const hook = mount()
+      startSession(hook)
+      act(() => hook.result.current.practice.recordResult(wrong))
+      expect(savedPatterns()).toHaveLength(1)
+
+      act(() => hook.result.current.practice.resetStatistics())
+
+      expect(hook.result.current.practice.mistakePatterns).toEqual([])
+      expect(savedPatterns()).toEqual([])
+    })
+
+    it('stay erased after a restart, and are not worked out again from old attempts', () => {
+      const first = mount()
+      startSession(first)
+      act(() => first.result.current.practice.recordResult(wrong))
+      act(() => first.result.current.practice.resetStatistics())
+      first.unmount()
+
+      const second = mount()
+
+      expect(second.result.current.practice.mistakePatterns).toEqual([])
+      expect(second.result.current.practice.attempts).toEqual([])
+    })
+  })
+
+  describe('when a session is discarded', () => {
+    it('takes back its mistakes from what is saved', () => {
+      const hook = mount()
+      startSession(hook)
+      act(() => hook.result.current.practice.recordResult(wrong))
+      expect(savedPatterns()).toHaveLength(1)
+
+      act(() => hook.result.current.practice.discardSession())
+
+      expect(hook.result.current.practice.mistakePatterns).toEqual([])
+      expect(savedPatterns()).toEqual([])
+    })
+  })
+
+  describe('when they cannot be saved', () => {
+    it('warns, and practice carries on with them in memory', () => {
+      restore = failWritesTo(STORAGE_KEYS.mistakePatterns)
+      const hook = mount()
+      startSession(hook)
+
+      act(() => hook.result.current.practice.recordResult(wrong))
+
+      expect(hook.result.current.status.problem).toBe('full')
+      expect(hook.result.current.practice.mistakePatterns).toHaveLength(1)
+      expect(hook.result.current.practice.attempts).toHaveLength(1)
+      expect(savedAttempts()).toHaveLength(1)
+    })
+
+    it('stop warning once they save again', () => {
+      restore = failWritesTo(STORAGE_KEYS.mistakePatterns)
+      const hook = mount()
+      startSession(hook)
+      act(() => hook.result.current.practice.recordResult(wrong))
+      expect(hook.result.current.status.problem).toBe('full')
+      restore()
+      restore = undefined
+
+      act(() => hook.result.current.practice.recordResult(wrong))
+
+      expect(hook.result.current.status.problem).toBeNull()
+      expect(savedPatterns().length).toBeGreaterThan(0)
+    })
+
+    it('do not stop the attempts from being saved when only they fail', () => {
+      restore = failWritesTo(STORAGE_KEYS.mistakePatterns)
+      const hook = mount()
+      startSession(hook)
+
+      act(() => hook.result.current.practice.recordResult(wrong))
+      act(() => hook.result.current.practice.recordResult(right))
+
+      expect(savedAttempts()).toHaveLength(2)
+    })
+  })
+
+  it('are not saved when storage is switched off, and practice still works', () => {
+    restore = blockStorage()
+    const hook = mount()
+    startSession(hook)
+
+    act(() => hook.result.current.practice.recordResult(wrong))
+
+    expect(hook.result.current.practice.mistakePatterns).toHaveLength(1)
+    expect(hook.result.current.status.problem).toBe('unavailable')
   })
 })

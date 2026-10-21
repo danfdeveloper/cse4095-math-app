@@ -3,15 +3,20 @@ import { Button, ButtonLink } from '../components/common/Button'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { EmptyState } from '../components/common/EmptyState'
 import { DifficultyStatistics } from '../components/statistics/DifficultyStatistics'
+import { MistakePractice } from '../components/statistics/MistakePractice'
 import { OperationStatistics } from '../components/statistics/OperationStatistics'
 import { RecentSessions } from '../components/statistics/RecentSessions'
 import { StatisticsOverview } from '../components/statistics/StatisticsOverview'
+import { useMistakeStatistics } from '../hooks/useMistakeStatistics'
 import { usePracticeSession } from '../hooks/usePracticeSession'
+import { useSettings } from '../hooks/useSettings'
 import { useStatistics } from '../hooks/useStatistics'
 import styles from './StatisticsPage.module.css'
 
 export function StatisticsPage() {
   const view = useStatistics()
+  const mistakes = useMistakeStatistics()
+  const { settings } = useSettings()
   const { resetStatistics } = usePracticeSession()
   const [confirmingReset, setConfirmingReset] = useState(false)
   const [justReset, setJustReset] = useState(false)
@@ -41,6 +46,19 @@ export function StatisticsPage() {
             <h2 id="levels-heading">By difficulty</h2>
             <DifficultyStatistics rows={view.byDifficulty} />
           </section>
+          <section
+            className={styles.section}
+            aria-labelledby="mistakes-heading"
+          >
+            <h2 id="mistakes-heading">Mistake practice</h2>
+            <MistakePractice
+              summary={mistakes.summary}
+              active={mistakes.active}
+              mastered={mistakes.mastered}
+              masteryThreshold={settings.masteryThreshold}
+              hasMistakes={mistakes.hasMistakes}
+            />
+          </section>
           <section className={styles.section} aria-labelledby="recent-heading">
             <h2 id="recent-heading">Recent sessions</h2>
             <RecentSessions sessions={view.recentSessions} />
@@ -58,7 +76,10 @@ export function StatisticsPage() {
         <Button variant="secondary" onClick={() => setConfirmingReset(true)}>
           Reset Statistics
         </Button>
-        <p className={styles.note}>Your settings will stay the same.</p>
+        <p className={styles.note}>
+          Your settings will stay the same. Mistakes saved for practice are
+          erased too.
+        </p>
       </div>
 
       <ConfirmDialog

@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router'
 import { Button, ButtonLink } from '../components/common/Button'
 import { SessionSummary } from '../components/practice/SessionSummary'
 import { usePracticeSession } from '../hooks/usePracticeSession'
+import { activePatterns } from '../services/mistakePatterns'
 import { summarizeSession } from '../services/statisticsService'
 import type { PracticeConfig } from '../types/session'
 import styles from './SessionSummaryPage.module.css'
@@ -20,7 +21,8 @@ export function SessionSummaryPage() {
 }
 
 function SummaryContent() {
-  const { session, attempts, startSession } = usePracticeSession()
+  const { session, attempts, mistakePatterns, startSession } =
+    usePracticeSession()
   const navigate = useNavigate()
   const headingRef = useRef<HTMLHeadingElement>(null)
 
@@ -35,12 +37,29 @@ function SummaryContent() {
     operations: session.operations,
     difficulty: session.difficulty,
     sessionLength: session.sessionLength,
+    ...(session.mode === undefined ? {} : { mode: session.mode }),
   }
+  const wasReview = session.mode === 'mistake-review'
+  // The mistakes this session's choices cover that still need practice.
+  const mistakesToPractice = activePatterns(mistakePatterns, session).length
+  const nothingToReview = mistakesToPractice === 0
 
   function handlePracticeAgain() {
     if (startSession(config)) navigate('/practice/session')
   }
 
+  function handlePracticeMistakes() {
+    if (startSession({ ...config, mode: 'mistake-review' })) {
+      navigate('/practice/session')
+    }
+  }
+
+  // Said in words beside the buttons that depend on it, as a disabled button cannot explain itself.
+  const mistakesNote = nothingToReview
+    ? wasReview
+      ? 'Great work! You have mastered every mistake for these choices.'
+      : 'You have no mistakes to practice for these choices yet.'
+    : `You have ${mistakesToPractice} ${mistakesToPractice === 1 ? 'mistake' : 'mistakes'} to practice for these choices.`
   return (
     <>
       <h1 ref={headingRef} tabIndex={-1} className={styles.heading}>
@@ -52,11 +71,19 @@ function SummaryContent() {
         summary={summarizeSession(session, attempts)}
       />
       <div className={styles.actions}>
-        <Button onClick={handlePracticeAgain}>Practice Again</Button>
-        {/* Review sessions need saved mistakes and a review mode, built in Phases 12-14. */}
+        <Button
+          onClick={handlePracticeAgain}
+          disabled={wasReview && nothingToReview}
+          aria-describedby={
+            wasReview && nothingToReview ? 'practice-mistakes-note' : undefined
+          }
+        >
+          Practice Again
+        </Button>
         <Button
           variant="secondary"
-          disabled
+          onClick={handlePracticeMistakes}
+          disabled={nothingToReview}
           aria-describedby="practice-mistakes-note"
         >
           Practice Mistakes
@@ -72,7 +99,7 @@ function SummaryContent() {
         </ButtonLink>
       </div>
       <p id="practice-mistakes-note" className={styles.note}>
-        Practice Mistakes is coming soon!
+        {mistakesNote}
       </p>
     </>
   )

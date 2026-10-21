@@ -25,6 +25,9 @@ export function RecentSessions({ sessions }: RecentSessionsProps) {
             <time className={styles.date} dateTime={session.startedAt}>
               {formatSessionDate(session.startedAt)}
             </time>
+            {session.mistakePractice && (
+              <span className={styles.tag}>Mistake practice</span>
+            )}
             {session.inProgress ? (
               <span className={styles.tag}>In progress</span>
             ) : (

@@ -118,4 +118,36 @@ describe('RecentSessions', () => {
     expect(screen.getByText('In progress')).toBeInTheDocument()
     expect(screen.queryByText('Not finished')).not.toBeInTheDocument()
   })
+
+  describe('the tag for practice on mistakes', () => {
+    it('is shown for a mistake-review session, in words', () => {
+      render(
+        <RecentSessions sessions={rows({ id: 'a', mode: 'mistake-review' })} />,
+      )
+
+      expect(screen.getByText('Mistake practice')).toBeVisible()
+    })
+
+    it('is not shown for regular practice, or for sessions saved before review mode', () => {
+      render(
+        <RecentSessions
+          sessions={rows(
+            { id: 'a', startedAt: '2026-03-01T12:00:00.000Z', mode: 'regular' },
+            { id: 'b', startedAt: '2026-03-02T12:00:00.000Z' },
+          )}
+        />,
+      )
+
+      expect(screen.queryByText('Mistake practice')).not.toBeInTheDocument()
+    })
+
+    it('can sit beside the tag for a session that was not finished', () => {
+      render(
+        <RecentSessions sessions={rows({ id: 'a', mode: 'mistake-review' })} />,
+      )
+
+      expect(screen.getByText('Mistake practice')).toBeVisible()
+      expect(screen.getByText('Not finished')).toBeVisible()
+    })
+  })
 })

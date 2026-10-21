@@ -1,7 +1,10 @@
+import type { Accent } from '../../constants/accents'
 import styles from './AnswerChoice.module.css'
 
 interface AnswerChoiceProps {
   value: number
+  /** A colour for the choice. It carries no meaning: no choice looks right or wrong. */
+  accent?: Accent
   selected: boolean
   /** Set once the card is flipped, so the answer can no longer be changed. */
   disabled?: boolean
@@ -15,6 +18,7 @@ interface AnswerChoiceProps {
  */
 export function AnswerChoice({
   value,
+  accent,
   selected,
   disabled = false,
   onSelect,
@@ -23,6 +27,7 @@ export function AnswerChoice({
     <button
       type="button"
       className={styles.choice}
+      data-accent={accent}
       aria-pressed={selected}
       disabled={disabled}
       onClick={() => onSelect(value)}

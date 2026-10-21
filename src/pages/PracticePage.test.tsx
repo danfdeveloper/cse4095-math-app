@@ -1,7 +1,13 @@
 import { act, fireEvent, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
-import { activeSessionState, endedSessionState } from '../test/fixtures'
+import { STORAGE_KEYS } from '../services/storageService'
+import {
+  activeSessionState,
+  endedSessionState,
+  makeMistakePattern,
+  reviewSessionState,
+} from '../test/fixtures'
 import { renderApp } from '../test/renderApp'
 import type { PracticeConfig } from '../types/session'
 
@@ -182,6 +188,55 @@ describe('PracticePage', () => {
         incorrect: 1,
       })
       expect(screen.getByText('Question 2 of 5')).toBeInTheDocument()
+    })
+
+    it('makes a mistake pattern from "I Got It Wrong", for the question just answered', async () => {
+      const user = userEvent.setup()
+      const { probe } = renderSession()
+      const before = probe().currentQuestionId
+
+      await answer(user, 'wrong')
+
+      const { attempts, mistakePatterns } = probe()
+      expect(before).toBe(attempts[0].questionId)
+      expect(mistakePatterns).toEqual([
+        expect.objectContaining({
+          operation: attempts[0].operation,
+          firstOperand: attempts[0].firstOperand,
+          secondOperand: attempts[0].secondOperand,
+          correctAnswer: attempts[0].correctAnswer,
+          difficulty: attempts[0].difficulty,
+          incorrectCount: 1,
+          similarCorrectCount: 0,
+          mastered: false,
+        }),
+      ])
+    })
+
+    it('makes no mistake pattern from "I Got It Right"', async () => {
+      const user = userEvent.setup()
+      const { probe } = renderSession()
+
+      await answer(user, 'right')
+
+      expect(probe().mistakePatterns).toEqual([])
+    })
+
+    it('makes one pattern for each different question that was got wrong', async () => {
+      const user = userEvent.setup()
+      const { probe } = renderSession()
+
+      await answer(user, 'wrong')
+      await answer(user, 'right')
+      await answer(user, 'wrong')
+
+      const { attempts, mistakePatterns } = probe()
+      const wrongIds = new Set(
+        attempts
+          .filter((a) => !a.selfReportedCorrect)
+          .map((a) => `${a.firstOperand}:${a.secondOperand}`),
+      )
+      expect(mistakePatterns).toHaveLength(wrongIds.size)
     })
 
     it('stores each completed attempt', async () => {
@@ -424,7 +479,9 @@ describe('PracticePage', () => {
       const choices = within(screen.getByRole('group')).getAllByRole('button')
       await user.click(choices[0])
       await user.click(screen.getByRole('button', { name: 'Flip Card' }))
-      expect(screen.getByText(/together to get/)).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: /How to solve it:/ }),
+      ).toBeInTheDocument()
     })
 
     it('turn the flip animation off when saved that way', () => {
@@ -447,7 +504,9 @@ describe('PracticePage', () => {
       expect(
         screen.getByRole('button', { name: 'I Got It Right' }),
       ).toBeInTheDocument()
-      expect(screen.queryByText(/together to get/)).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('heading', { name: /How to solve it/ }),
+      ).not.toBeInTheDocument()
     })
 
     it('still work completely with the animation off', async () => {
@@ -466,6 +525,181 @@ describe('PracticePage', () => {
       renderSession()
 
       expect(card()).toHaveAttribute('data-animated', 'true')
+    })
+  })
+})
+
+describe('PracticePage in a mistake-review session', () => {
+  const addition = (a: number, b: number, overrides = {}) =>
+    makeMistakePattern({
+      operation: 'addition',
+      firstOperand: a,
+      secondOperand: b,
+      correctAnswer: a + b,
+      difficulty: 2,
+      ...overrides,
+    })
+
+  function renderReview(
+    patterns = [addition(12, 15), addition(21, 9)],
+    config: Partial<PracticeConfig> = {},
+  ) {
+    return renderApp('/practice/session', {
+      initialState: reviewSessionState(patterns, config),
+    })
+  }
+
+  it('shows the question as practice for an earlier mistake', () => {
+    renderReview()
+
+    expect(screen.getByText('Mistake practice')).toBeVisible()
+    expect(screen.getByText('Question 1 of 5')).toBeInTheDocument()
+    expect(questionHeading()).toHaveTextContent(/= \?$/)
+  })
+
+  it('works like any other card: pick, flip, report', async () => {
+    const user = userEvent.setup()
+    const { probe } = renderReview()
+
+    await answer(user, 'right')
+
+    expect(probe().session).toMatchObject({ attempted: 1, correct: 1 })
+    expect(screen.getByText('Question 2 of 5')).toBeInTheDocument()
+    expect(screen.getByText('Mistake practice')).toBeVisible()
+  })
+
+  it('counts a right answer toward mastering the mistake the question came from', async () => {
+    const user = userEvent.setup()
+    const { probe } = renderReview()
+    const sourceId = probe().currentQuestion!.mistakePatternId
+
+    await answer(user, 'right')
+
+    expect(
+      probe().mistakePatterns.find((p) => p.id === sourceId)
+        ?.similarCorrectCount,
+    ).toBe(1)
+  })
+
+  it('counts a wrong answer as a step back, and the missed question becomes a mistake', async () => {
+    const user = userEvent.setup()
+    const { probe } = renderReview([
+      addition(12, 15, { similarCorrectCount: 2 }),
+      addition(21, 9, { similarCorrectCount: 2 }),
+    ])
+    const asked = probe().currentQuestion!
+    const sourceId = asked.mistakePatternId
+
+    await answer(user, 'wrong')
+
+    const { mistakePatterns } = probe()
+    expect(mistakePatterns).toHaveLength(3)
+    expect(
+      mistakePatterns.find((p) => p.id === sourceId)?.similarCorrectCount,
+    ).toBe(1)
+    expect(screen.getByText('Mistake practice')).toBeVisible()
+  })
+
+  it('shows the explanation on the back of a review card, as on any card', async () => {
+    const user = userEvent.setup()
+    renderReview()
+
+    const choices = within(screen.getByRole('group')).getAllByRole('button')
+    await user.click(choices[0])
+    await user.click(screen.getByRole('button', { name: 'Flip Card' }))
+
+    expect(screen.getByText(/How to solve it/)).toBeInTheDocument()
+  })
+
+  describe('when the last mistake is mastered', () => {
+    it('ends the session, shows the summary, and says so', async () => {
+      window.localStorage.setItem(
+        STORAGE_KEYS.settings,
+        JSON.stringify({ masteryThreshold: 1 }),
+      )
+      const user = userEvent.setup()
+      const { router, probe } = renderReview([
+        addition(12, 15),
+        addition(21, 9),
+      ])
+
+      await answer(user, 'right')
+      expect(router.state.location.pathname).toBe('/practice/session')
+      await answer(user, 'right')
+
+      expect(router.state.location.pathname).toBe('/practice/summary')
+      expect(probe().session).toMatchObject({
+        attempted: 2,
+        mode: 'mistake-review',
+      })
+      expect(
+        screen.getByText(
+          'Great work! You have mastered every mistake for these choices.',
+        ),
+      ).toBeVisible()
+      expect(
+        screen.getByRole('button', { name: 'Practice Again' }),
+      ).toBeDisabled()
+    })
+
+    it('counts those questions in the summary as mistake-review questions', async () => {
+      window.localStorage.setItem(
+        STORAGE_KEYS.settings,
+        JSON.stringify({ masteryThreshold: 1 }),
+      )
+      const user = userEvent.setup()
+      renderReview([addition(12, 15), addition(21, 9)])
+
+      await answer(user, 'right')
+      await answer(user, 'right')
+
+      expect(
+        screen.getByText('Mistake-review questions', { selector: 'dt' })
+          .nextElementSibling,
+      ).toHaveTextContent('2')
+      expect(
+        screen.getByText('Questions attempted', { selector: 'dt' })
+          .nextElementSibling,
+      ).toHaveTextContent('2')
+    })
+
+    it('does not end the session while another mistake still needs practice', async () => {
+      window.localStorage.setItem(
+        STORAGE_KEYS.settings,
+        JSON.stringify({ masteryThreshold: 1 }),
+      )
+      const user = userEvent.setup()
+      const { router, probe } = renderReview([
+        addition(12, 15),
+        addition(21, 9),
+      ])
+
+      await answer(user, 'right')
+
+      expect(router.state.location.pathname).toBe('/practice/session')
+      expect(probe().isActive).toBe(true)
+      expect(screen.getByText('Question 2 of 5')).toBeInTheDocument()
+    })
+  })
+
+  it('can be ended early in continuous practice, like any session', async () => {
+    const user = userEvent.setup()
+    const { router, probe } = renderReview(undefined, {
+      sessionLength: 'continuous',
+    })
+    await answer(user, 'right')
+
+    await user.click(screen.getByRole('button', { name: 'End Session' }))
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'End Session',
+      }),
+    )
+
+    expect(router.state.location.pathname).toBe('/practice/summary')
+    expect(probe().session).toMatchObject({
+      attempted: 1,
+      mode: 'mistake-review',
     })
   })
 })

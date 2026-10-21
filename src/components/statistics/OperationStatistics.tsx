@@ -1,3 +1,4 @@
+import { OPERATION_ACCENT } from '../../constants/accents'
 import { OPERATION_INFO } from '../../constants/practice'
 import type { OperationRow } from '../../services/statisticsService'
 import styles from './StatisticsGrid.module.css'
@@ -16,6 +17,7 @@ export function OperationStatistics({ rows }: OperationStatisticsProps) {
           key={row.operation}
           title={OPERATION_INFO[row.operation].label}
           symbol={OPERATION_INFO[row.operation].symbol}
+          accent={OPERATION_ACCENT[row.operation]}
           counts={row}
         />
       ))}

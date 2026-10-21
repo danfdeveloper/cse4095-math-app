@@ -6,6 +6,40 @@
   text-align: center;
 }
 
+/*
+ * A rainbow made of rings, standing still. --arc is its radius, and it grows
+ * a little on bigger screens.
+ */
+.rainbow {
+  --arc: clamp(5rem, 22vw, 8rem);
+
+  width: calc(var(--arc) * 2);
+  max-width: 100%;
+  height: var(--arc);
+  margin: 0 auto var(--space-md);
+  background: radial-gradient(
+    circle var(--arc) at 50% 100%,
+    transparent 0 38%,
+    var(--purple-bright) 38% 46%,
+    var(--blue-bright) 46% 54%,
+    var(--teal-bright) 54% 62%,
+    var(--green-bright) 62% 70%,
+    var(--yellow-bright) 70% 78%,
+    var(--orange-bright) 78% 86%,
+    var(--red-bright) 86% 94%,
+    transparent 94%
+  );
+}
+
+.notice {
+  max-width: 36rem;
+  margin: 0 auto var(--space-lg);
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-lg);
+  background: var(--color-primary-soft);
+  font-weight: 700;
+}
+
 .welcome {
   max-width: 36rem;
   margin: 0 auto var(--space-xl);

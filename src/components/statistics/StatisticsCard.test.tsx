@@ -70,3 +70,23 @@ describe('StatisticsCard', () => {
     expect(valueIn(screen.getByRole('article'), 'Accuracy')).toBe('100%')
   })
 })
+
+describe('StatisticsCard and its colour', () => {
+  it('has the accent it was given, and none otherwise', () => {
+    const { rerender } = render(
+      <StatisticsCard title="Addition" accent="green" counts={counts} />,
+    )
+    expect(screen.getByRole('article')).toHaveAttribute('data-accent', 'green')
+
+    rerender(<StatisticsCard title="Addition" counts={counts} />)
+    expect(screen.getByRole('article')).not.toHaveAttribute('data-accent')
+  })
+
+  it('is still named by its title, not its colour', () => {
+    render(<StatisticsCard title="Division" accent="blue" counts={counts} />)
+
+    expect(
+      screen.getByRole('article', { name: 'Division' }),
+    ).toBeInTheDocument()
+  })
+})

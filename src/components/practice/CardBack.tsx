@@ -1,6 +1,7 @@
-import type { Ref } from 'react'
+import { useId, type Ref } from 'react'
+import { explainQuestion } from '../../services/explanations'
 import type { Question } from '../../types/question'
-import { explainQuestion, spokenEquation } from '../../utils/questionText'
+import { spokenEquation } from '../../utils/questionText'
 import { Button } from '../common/Button'
 import styles from './CardBack.module.css'
 
@@ -23,6 +24,9 @@ export function CardBack({
   onReportResult,
   headingRef,
 }: CardBackProps) {
+  const explanationId = useId()
+  const explanation = showExplanation ? explainQuestion(question) : null
+
   return (
     <div className={styles.back}>
       <h2
@@ -34,8 +38,18 @@ export function CardBack({
         {question.displayText} = {question.correctAnswer}
       </h2>
       <p className={styles.yourAnswer}>Your answer: {selectedAnswer}</p>
-      {showExplanation && (
-        <p className={styles.explanation}>{explainQuestion(question)}</p>
+      {explanation && (
+        <section className={styles.explanation} aria-labelledby={explanationId}>
+          <h3 id={explanationId} className={styles.method}>
+            How to solve it:{' '}
+            <span className={styles.methodName}>{explanation.method}</span>
+          </h3>
+          <ol className={styles.steps}>
+            {explanation.steps.map((step, index) => (
+              <li key={index}>{step}</li>
+            ))}
+          </ol>
+        </section>
       )}
       <div className={styles.actions}>
         <Button disabled={resultRecorded} onClick={() => onReportResult(true)}>

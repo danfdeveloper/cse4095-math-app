@@ -4,6 +4,7 @@ import { RouterProvider } from 'react-router/dom'
 import { AppProvider } from '../app/AppProvider'
 import { routes } from '../app/AppRoutes'
 import type { PracticeSessionState } from '../app/practiceSessionState'
+import type { MistakePattern } from '../types/mistake'
 import type { PracticeAttempt, PracticeSession } from '../types/session'
 import { SessionProbe } from './SessionProbe'
 
@@ -35,8 +36,15 @@ export function renderApp(
     ) as {
       session: PracticeSession | null
       currentQuestionId: string | null
+      currentQuestion: {
+        source: 'regular' | 'mistake-review'
+        mistakePatternId: string | null
+        displayText: string
+        difficulty: number
+      } | null
       currentQuestionIndex: number
       attempts: PracticeAttempt[]
+      mistakePatterns: MistakePattern[]
       isActive: boolean
     }
 
