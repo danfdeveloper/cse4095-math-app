@@ -1,4 +1,5 @@
 import { DEFAULT_SETTINGS } from '../constants/settings'
+import { FRESH_CARD } from '../services/activeSession'
 import { forgetMistake, patternsAfterAnswer } from '../services/mistakePatterns'
 import {
   createEmptyStatistics,
@@ -8,6 +9,7 @@ import {
 import type { MistakePattern } from '../types/mistake'
 import type { Question } from '../types/question'
 import type {
+  CardProgress,
   PracticeAttempt,
   PracticeConfig,
   PracticeSession,
@@ -15,7 +17,11 @@ import type {
 } from '../types/session'
 import type { AppStatistics } from '../types/statistics'
 import { generateId } from '../utils/ids'
-import { removeSession, upsertSession } from '../utils/sessionHistory'
+import {
+  limitAttempts,
+  removeSession,
+  upsertSession,
+} from '../utils/sessionHistory'
 
 /** Everything about the practice in progress, or just finished (specification section 12). */
 export interface PracticeSessionState {
@@ -24,6 +30,8 @@ export interface PracticeSessionState {
   currentQuestion: Question | null
   /** Zero-based position of the question on screen. */
   currentQuestionIndex: number
+  /** What has been done with the question on screen, kept so that a refresh can bring it back. */
+  card: CardProgress
   /** Every recorded attempt, oldest first. */
   attempts: PracticeAttempt[]
   /**
@@ -41,6 +49,7 @@ export const initialPracticeSessionState: PracticeSessionState = {
   session: null,
   currentQuestion: null,
   currentQuestionIndex: 0,
+  card: { ...FRESH_CARD },
   attempts: [],
   sessions: [],
   statistics: createEmptyStatistics(),
@@ -61,10 +70,23 @@ export type PracticeSessionAction =
       /** How many correct similar questions master a mistake, from the settings. */
       masteryThreshold?: number
     }
+  /** The student picked an answer, or turned the card over. */
+  | { type: 'cardChanged'; questionId: string; card: CardProgress }
   | { type: 'sessionEnded'; completedAt: string }
   | { type: 'sessionDiscarded' }
   /** Erases all practice history, statistics and mistakes, and any session in progress. */
   | { type: 'historyReset' }
+  /**
+   * Another tab saved practice: take its history, totals and mistakes as the
+   * latest, keeping this tab's own session in progress.
+   */
+  | {
+      type: 'historyLoaded'
+      attempts: PracticeAttempt[]
+      sessions: PracticeSession[]
+      statistics: AppStatistics
+      mistakePatterns: MistakePattern[]
+    }
 
 /** Whether a session is in progress: one exists, has not ended, and has a question to show. */
 export function isSessionActive(state: PracticeSessionState): boolean {
@@ -140,6 +162,7 @@ export function practiceSessionReducer(
         session: action.session,
         currentQuestion: action.firstQuestion,
         currentQuestionIndex: 0,
+        card: { ...FRESH_CARD },
       }
 
     case 'resultRecorded': {
@@ -170,7 +193,9 @@ export function practiceSessionReducer(
         session: updated,
         currentQuestion: nextQuestion,
         currentQuestionIndex: state.currentQuestionIndex + 1,
-        attempts: [...state.attempts, attempt],
+        card: { ...FRESH_CARD },
+        // The oldest details are archived once there are very many (section 23).
+        attempts: limitAttempts([...state.attempts, attempt]),
         sessions: upsertSession(state.sessions, updated),
         statistics: recordAttemptInStatistics(state.statistics, attempt),
         // An incorrect answer creates or updates its pattern, and an answer to a
@@ -184,6 +209,30 @@ export function practiceSessionReducer(
       }
     }
 
+    case 'cardChanged': {
+      const { currentQuestion } = state
+      const { card } = action
+      // Only for the question on screen, with an answer that is one of its choices.
+      if (
+        // No question means no session in progress.
+        currentQuestion === null ||
+        action.questionId !== currentQuestion.id ||
+        (card.selectedAnswer !== null &&
+          !currentQuestion.choices.includes(card.selectedAnswer)) ||
+        (card.flipped && card.selectedAnswer === null)
+      ) {
+        return state
+      }
+      // The same again: keep the state, so that nothing is saved for nothing.
+      if (
+        card.selectedAnswer === state.card.selectedAnswer &&
+        card.flipped === state.card.flipped
+      ) {
+        return state
+      }
+      return { ...state, card: { ...card } }
+    }
+
     case 'sessionEnded': {
       if (!isSessionActive(state) || state.session === null) return state
       const ended = { ...state.session, completedAt: action.completedAt }
@@ -191,6 +240,7 @@ export function practiceSessionReducer(
         ...state,
         session: ended,
         currentQuestion: null,
+        card: { ...FRESH_CARD },
         // A session with nothing answered is never kept in the history.
         sessions:
           ended.attempted > 0
@@ -212,6 +262,7 @@ export function practiceSessionReducer(
         session: null,
         currentQuestion: null,
         currentQuestionIndex: 0,
+        card: { ...FRESH_CARD },
         // Keep the same list when nothing was removed, so nothing is saved again.
         attempts:
           attempts.length === state.attempts.length ? state.attempts : attempts,
@@ -225,6 +276,31 @@ export function practiceSessionReducer(
             : removed.reduce(removeAttemptFromStatistics, state.statistics),
         // ...and the mistakes those answers made.
         mistakePatterns: removed.reduce(forgetMistake, state.mistakePatterns),
+      }
+    }
+
+    case 'historyLoaded': {
+      // Everything was erased in the other tab, which ends the practice here too.
+      const erased =
+        action.statistics.attempted === 0 &&
+        action.attempts.length === 0 &&
+        action.sessions.length === 0 &&
+        action.mistakePatterns.length === 0
+      if (erased && state.statistics.attempted > 0) {
+        return { ...initialPracticeSessionState, statistics: action.statistics }
+      }
+      const { session } = state
+      // This tab's session counts as saved once it has an answer; keep its newest copy.
+      const sessions =
+        isSessionActive(state) && session !== null && session.attempted > 0
+          ? upsertSession(action.sessions, session)
+          : action.sessions
+      return {
+        ...state,
+        attempts: action.attempts,
+        sessions,
+        statistics: action.statistics,
+        mistakePatterns: action.mistakePatterns,
       }
     }
 

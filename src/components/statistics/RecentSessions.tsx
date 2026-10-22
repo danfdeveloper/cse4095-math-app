@@ -38,6 +38,7 @@ export function RecentSessions({ sessions }: RecentSessionsProps) {
           </div>
           <dl className={styles.details}>
             <Detail
+              wide
               label="Operations"
               value={formatList(
                 session.operations.map((op) => OPERATION_INFO[op].label),
@@ -58,9 +59,17 @@ export function RecentSessions({ sessions }: RecentSessionsProps) {
   )
 }
 
-function Detail({ label, value }: { label: string; value: string | number }) {
+function Detail({
+  label,
+  value,
+  wide = false,
+}: {
+  label: string
+  value: string | number
+  wide?: boolean
+}) {
   return (
-    <div className={styles.detail}>
+    <div className={wide ? `${styles.detail} ${styles.wide}` : styles.detail}>
       <dt className={styles.label}>{label}</dt>
       <dd className={styles.value}>{value}</dd>
     </div>

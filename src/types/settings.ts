@@ -5,6 +5,8 @@ export interface AppSettings {
   soundEffectsEnabled: boolean
   cardAnimationEnabled: boolean
   showExplanations: boolean
+  /** Short cheerful messages after each question and at the end of a session. */
+  feedbackEffectsEnabled: boolean
   defaultSessionLength: SessionLength
   defaultDifficulty: DifficultyLevel
   defaultOperations: MathOperation[]

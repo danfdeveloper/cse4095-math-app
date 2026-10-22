@@ -21,7 +21,7 @@ export function Navigation() {
   const { pathname } = useLocation()
 
   return (
-    <nav aria-label="Main">
+    <nav className={styles.nav} aria-label="Main">
       <ul className={styles.list}>
         {NAV_ITEMS.map((item) => {
           const isCurrent =

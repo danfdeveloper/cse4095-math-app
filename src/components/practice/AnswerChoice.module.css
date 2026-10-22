@@ -71,3 +71,26 @@
     transform: none;
   }
 }
+
+/* The key that picks this choice. It is left off touch screens, which have no number keys. */
+.key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  margin-left: auto;
+  border: 2px solid var(--color-text-muted);
+  border-radius: 0.375rem;
+  color: var(--color-text-muted);
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* Also left off narrow screens, which are almost always touch, and where text made bigger needs the room. */
+@media (pointer: coarse), (max-width: 26rem) {
+  .key {
+    display: none;
+  }
+}

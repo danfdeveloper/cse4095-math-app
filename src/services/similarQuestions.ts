@@ -1,7 +1,12 @@
 import type { MistakePattern } from '../types/mistake'
 import type { Question } from '../types/question'
+import { logDevError } from '../utils/devLog'
 import { randomInt, type RandomSource } from '../utils/math'
-import { isDifficultyLevel, isWithinDifficultyRules } from '../utils/validation'
+import {
+  getQuestionProblems,
+  isDifficultyLevel,
+  isWithinDifficultyRules,
+} from '../utils/validation'
 import { buildQuestion, generateQuestion } from './questionGenerator'
 
 /**
@@ -279,13 +284,21 @@ export function generateSimilarQuestion(
     const strategy = strategies[randomInt(0, strategies.length - 1, random)]
     const choices = pool[strategy]
     const chosen = choices[randomInt(0, choices.length - 1, random)]
-    return forPattern(
-      buildQuestion(chosen.operation, pattern.difficulty, chosen, random),
-      pattern,
+    const similar = buildQuestion(
+      chosen.operation,
+      pattern.difficulty,
+      chosen,
+      random,
+    )
+    const problems = getQuestionProblems(similar)
+    if (problems.length === 0) return forPattern(similar, pattern)
+    // Should never happen; if it does, a regular question is still practice.
+    logDevError(
+      `Made an invalid similar question, ${similar.displayText}: ${problems.join('; ')}`,
     )
   }
 
-  // Nothing similar fits the level. That cannot happen to a pattern that
+  // Nothing similar fits the level (or what was made failed its check). That cannot happen to a pattern that
   // belongs to its level, since there is always a nearby number that does, but
   // saved data may hold one that does not, so ask a regular question instead.
   return forPattern(

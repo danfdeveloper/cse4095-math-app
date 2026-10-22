@@ -2,6 +2,11 @@ import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import {
+  PRAISE_MESSAGES,
+  SUPPORT_MESSAGES,
+} from '../constants/feedbackMessages'
+import { STORAGE_KEYS } from '../services/storageService'
+import {
   activeSessionState,
   finishedSessionState,
   makeMistakePattern,
@@ -129,6 +134,47 @@ describe('SessionSummaryPage', () => {
       expect(
         screen.queryByText(/fail|bad|poor|stupid/i),
       ).not.toBeInTheDocument()
+    })
+  })
+
+  describe('the cheerful line above the results', () => {
+    const intro = () => screen.getByText(/Here is how you did\.$/).textContent!
+    const message = () => intro().replace(' Here is how you did.', '')
+
+    it.each([
+      ['all of the questions right', { correct: 5, incorrect: 0 }],
+      [
+        'four of five right, the lowest that is praised',
+        { correct: 4, incorrect: 1 },
+      ],
+    ])('praises %s', (_name, counts) => {
+      renderSummary(counts)
+
+      expect(PRAISE_MESSAGES).toContain(message())
+    })
+
+    it.each([
+      ['three of five right', { correct: 3, incorrect: 2 }],
+      ['none right', { correct: 0, incorrect: 5 }],
+      ['79 of 100 right, just below the line', { correct: 79, incorrect: 21 }],
+    ])(
+      'encourages after %s, without a word about being wrong',
+      (_name, counts) => {
+        renderSummary(counts)
+
+        expect(SUPPORT_MESSAGES).toContain(message())
+        expect(intro()).not.toMatch(/wrong|incorrect|fail|bad/i)
+      },
+    )
+
+    it('is left out when feedback effects are off', () => {
+      window.localStorage.setItem(
+        STORAGE_KEYS.settings,
+        JSON.stringify({ feedbackEffectsEnabled: false }),
+      )
+      renderSummary({ correct: 5, incorrect: 0 })
+
+      expect(intro()).toBe('Here is how you did.')
     })
   })
 

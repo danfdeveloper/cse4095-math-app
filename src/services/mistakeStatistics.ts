@@ -1,13 +1,13 @@
 import { MATH_OPERATIONS } from '../constants/practice'
 import type { MistakePattern } from '../types/mistake'
 import type { MathOperation } from '../types/question'
-import type { PracticeAttempt } from '../types/session'
+import type { AppStatistics } from '../types/statistics'
 import { activePatterns } from './mistakePatterns'
 
 /**
  * What the statistics page says about mistakes (specification section 6.6,
  * "Mistake Review Statistics"), worked out from the saved mistake patterns and
- * the saved attempts.
+ * the saved totals.
  */
 
 /** How many frequently missed number facts are listed. */
@@ -165,18 +165,13 @@ export function mostMissedOperation(
 /** Everything the page says about mistakes. */
 export function buildMistakeStatistics(
   patterns: readonly MistakePattern[],
-  attempts: readonly PracticeAttempt[],
+  statistics: Pick<AppStatistics, 'mistakeReview'>,
 ): MistakeStatistics {
-  const reviewAttempts = attempts.filter(
-    (attempt) => attempt.source === 'mistake-review',
-  )
   return {
     active: activePatterns(patterns).length,
     mastered: patterns.filter((pattern) => pattern.mastered).length,
-    similarPracticed: reviewAttempts.length,
-    similarCorrect: reviewAttempts.filter(
-      (attempt) => attempt.selfReportedCorrect,
-    ).length,
+    similarPracticed: statistics.mistakeReview.attempted,
+    similarCorrect: statistics.mistakeReview.correct,
     mostMissedOperation: mostMissedOperation(patterns),
     missedFacts: missedFacts(patterns),
   }

@@ -1,7 +1,12 @@
+.nav {
+  flex: 1 1 auto;
+}
+
 .list {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-sm);
+  justify-content: flex-end;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -10,13 +15,47 @@
 .link {
   display: inline-flex;
   align-items: center;
-  min-height: 2.75rem;
+  min-height: var(--target-min);
   padding: 0 var(--space-md);
   border: 2px solid transparent;
   border-radius: var(--radius-pill);
   color: var(--color-text);
   font-weight: 700;
   text-decoration: none;
+}
+
+/*
+ * On a phone the four links share one row, each the same width, instead of
+ * wrapping onto three lines. They stay as plain words, so nothing is hidden
+ * behind a menu button. Only if the text is made very big do they wrap again.
+ */
+@media (max-width: 47.99rem) {
+  .list {
+    justify-content: space-between;
+    gap: var(--space-xs);
+  }
+
+  .list > li {
+    flex: 1 1 auto;
+  }
+
+  .link {
+    justify-content: center;
+    padding: 0 var(--space-xs);
+    font-size: 1rem;
+  }
+}
+
+/* The narrowest phones (320px): a little smaller and closer, so that the four still share one row. */
+@media (max-width: 22.5rem) {
+  .list {
+    gap: 0;
+  }
+
+  .link {
+    padding: 0 2px;
+    font-size: 0.9375rem;
+  }
 }
 
 .link:hover {

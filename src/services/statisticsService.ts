@@ -65,6 +65,7 @@ export function createEmptyStatistics(): AppStatistics {
       3: emptyCounts(),
       4: emptyCounts(),
     },
+    mistakeReview: emptyCounts(),
   }
 }
 
@@ -86,7 +87,7 @@ function applyAttempt(
   statistics: AppStatistics,
   attempt: Pick<
     PracticeAttempt,
-    'operation' | 'difficulty' | 'selfReportedCorrect'
+    'operation' | 'difficulty' | 'selfReportedCorrect' | 'source'
   >,
   direction: 1 | -1,
 ): AppStatistics {
@@ -109,6 +110,10 @@ function applyAttempt(
         direction,
       ),
     },
+    mistakeReview:
+      attempt.source === 'mistake-review'
+        ? addToCounts(statistics.mistakeReview, correct, direction)
+        : statistics.mistakeReview,
   }
 }
 

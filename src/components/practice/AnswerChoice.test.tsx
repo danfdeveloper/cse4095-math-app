@@ -139,3 +139,76 @@ describe('AnswerChoice and its colour', () => {
     expect(screen.getByRole('button', { name: '56' })).toBeInTheDocument()
   })
 })
+
+describe('AnswerChoice and its place among the choices', () => {
+  const renderChoice = (
+    props: Partial<Parameters<typeof AnswerChoice>[0]> = {},
+  ) =>
+    render(
+      <AnswerChoice
+        value={56}
+        position={3}
+        count={4}
+        selected={false}
+        onSelect={vi.fn()}
+        {...props}
+      />,
+    )
+
+  it('names the key that picks it', () => {
+    renderChoice()
+
+    expect(screen.getByRole('button', { name: '56' })).toHaveAttribute(
+      'aria-keyshortcuts',
+      '3',
+    )
+  })
+
+  it('says which answer it is, after its name', () => {
+    renderChoice()
+
+    expect(
+      screen.getByRole('button', { name: '56' }),
+    ).toHaveAccessibleDescription('Answer 3 of 4')
+  })
+
+  it('is still named by its number alone: the place is no part of its name', () => {
+    renderChoice()
+
+    expect(screen.getByRole('button')).toHaveAccessibleName('56')
+  })
+
+  it('shows the key beside it for the eye, hidden from screen readers', () => {
+    const { container } = renderChoice()
+
+    const hint = container.querySelector(
+      'button [aria-hidden="true"]:last-child',
+    )
+    expect(hint).toHaveTextContent('3')
+  })
+
+  it('says just the number if it is not told how many there are', () => {
+    renderChoice({ count: undefined })
+
+    expect(screen.getByRole('button')).toHaveAccessibleDescription('Answer 3')
+  })
+
+  it('has none of this when it is not told its place', () => {
+    renderChoice({ position: undefined, count: undefined })
+
+    const button = screen.getByRole('button', { name: '56' })
+    expect(button).not.toHaveAttribute('aria-keyshortcuts')
+    expect(button).not.toHaveAttribute('aria-describedby')
+    expect(button).toHaveAccessibleDescription('')
+  })
+
+  it('still works when clicked', async () => {
+    const user = userEvent.setup()
+    const onSelect = vi.fn()
+    renderChoice({ onSelect })
+
+    await user.click(screen.getByRole('button', { name: '56' }))
+
+    expect(onSelect).toHaveBeenCalledWith(56)
+  })
+})

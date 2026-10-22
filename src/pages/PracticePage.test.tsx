@@ -1,14 +1,21 @@
 import { act, fireEvent, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import {
+  PRAISE_MESSAGES,
+  SUPPORT_MESSAGES,
+} from '../constants/feedbackMessages'
 import { STORAGE_KEYS } from '../services/storageService'
 import {
   activeSessionState,
   endedSessionState,
+  inProgressSessionState,
   makeMistakePattern,
   reviewSessionState,
 } from '../test/fixtures'
 import { renderApp } from '../test/renderApp'
+import { saveSessionInProgress } from '../test/savedSession'
+import { blockStorage, fillStorage } from '../test/storage'
 import type { PracticeConfig } from '../types/session'
 
 type User = ReturnType<typeof userEvent.setup>
@@ -346,7 +353,7 @@ describe('PracticePage', () => {
       renderSession({ sessionLength: 'continuous' })
 
       expect(screen.getByText('Question 1')).toBeInTheDocument()
-      expect(screen.queryByText(/ of /)).not.toBeInTheDocument()
+      expect(screen.queryByText(/^Question \d+ of /)).not.toBeInTheDocument()
       expect(progressBar()).not.toBeInTheDocument()
     })
 
@@ -701,5 +708,850 @@ describe('PracticePage in a mistake-review session', () => {
       attempted: 1,
       mode: 'mistake-review',
     })
+  })
+})
+
+describe('PracticePage and what it says to a screen reader', () => {
+  const announcement = () =>
+    document.querySelector<HTMLElement>('[aria-live="polite"]')!
+
+  it('has a polite live region that is kept out of sight', () => {
+    renderSession()
+
+    expect(announcement()).toHaveAttribute('aria-live', 'polite')
+    expect(announcement()).toHaveAttribute('aria-atomic', 'true')
+    expect(announcement()).toHaveClass('visually-hidden')
+  })
+
+  it('says how far along the session is when a question appears', () => {
+    renderSession({ sessionLength: 5 })
+
+    expect(announcement()).toHaveTextContent(
+      'Question 1 of 5. 0 of 5 answered.',
+    )
+  })
+
+  it('says it again for each new question', async () => {
+    const user = userEvent.setup()
+    renderSession({ sessionLength: 5 })
+
+    await answer(user, 'right')
+    expect(announcement()).toHaveTextContent(
+      'Question 2 of 5. 1 of 5 answered.',
+    )
+
+    await answer(user, 'wrong')
+    expect(announcement()).toHaveTextContent(
+      'Question 3 of 5. 2 of 5 answered.',
+    )
+  })
+
+  it('says it for continuous practice, with no total', async () => {
+    const user = userEvent.setup()
+    renderSession({ sessionLength: 'continuous' })
+    expect(announcement()).toHaveTextContent('Question 1. 0 answered so far.')
+
+    await answer(user, 'right')
+
+    expect(announcement()).toHaveTextContent('Question 2. 1 answered so far.')
+  })
+
+  it('says what was picked when a number key picks it', async () => {
+    const user = userEvent.setup()
+    renderSession()
+
+    await user.keyboard('2')
+
+    expect(announcement()).toHaveTextContent(
+      /^You picked \d+, answer 2\. Press Enter to flip the card\.$/,
+    )
+  })
+
+  it('says the correct answer when the card is turned over', async () => {
+    const user = userEvent.setup()
+    renderSession()
+
+    await user.keyboard('1')
+    await user.keyboard('{Enter}')
+
+    expect(announcement()).toHaveTextContent(
+      /^Card turned over\. You chose \d+\. The correct answer is \d+\.$/,
+    )
+  })
+
+  it('can be used from the first key to the next question, with the keyboard alone', async () => {
+    const user = userEvent.setup()
+    const { probe } = renderSession({ sessionLength: 5 })
+
+    await user.keyboard('3') // pick the third choice
+    await user.keyboard('{Enter}') // flip
+    await user.tab() // on to I Got It Right
+    await user.keyboard('{Enter}')
+
+    expect(probe().session).toMatchObject({ attempted: 1, correct: 1 })
+    expect(announcement()).toHaveTextContent(
+      'Question 2 of 5. 1 of 5 answered.',
+    )
+    expect(screen.getByText('Question 2 of 5')).toBeInTheDocument()
+  })
+
+  it('says it is practice on mistakes, for a review session', () => {
+    renderApp('/practice/session', {
+      initialState: reviewSessionState([
+        makeMistakePattern({
+          operation: 'addition',
+          firstOperand: 12,
+          secondOperand: 15,
+          correctAnswer: 27,
+        }),
+      ]),
+    })
+
+    expect(announcement()).toHaveTextContent(
+      'Mistake practice. Question 1 of 5. 0 of 5 answered.',
+    )
+  })
+
+  it('does not take the number keys while the end-session question is open', async () => {
+    const user = userEvent.setup()
+    renderSession({ sessionLength: 'continuous' })
+    await answer(user, 'right')
+
+    await user.click(screen.getByRole('button', { name: 'End Session' }))
+    await user.keyboard('1')
+
+    expect(screen.queryAllByRole('button', { pressed: true })).toHaveLength(0)
+  })
+})
+
+describe('PracticePage and reduced motion', () => {
+  const stubMotion = (reduce: boolean) =>
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: reduce,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }))
+  const animated = () =>
+    document.querySelector('[data-animated]')?.getAttribute('data-animated')
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('animates the card when neither the setting nor the device says otherwise', () => {
+    stubMotion(false)
+    renderSession()
+
+    expect(animated()).toBe('true')
+  })
+
+  it('does not animate it when the device asks for reduced motion, whatever the setting', () => {
+    stubMotion(true)
+    renderSession()
+
+    expect(animated()).toBe('false')
+  })
+
+  it('does not animate it when the app’s own setting is off', () => {
+    stubMotion(false)
+    window.localStorage.setItem(
+      STORAGE_KEYS.settings,
+      JSON.stringify({ cardAnimationEnabled: false }),
+    )
+    renderSession()
+
+    expect(animated()).toBe('false')
+  })
+
+  it('still shows the answer side clearly when it does not animate', async () => {
+    const user = userEvent.setup()
+    stubMotion(true)
+    renderSession()
+
+    await user.keyboard('2')
+    await user.keyboard('{Enter}')
+
+    expect(screen.getByRole('button', { name: 'I Got It Right' })).toBeVisible()
+    expect(screen.getByText(/^Your answer: \d+$/)).toBeInTheDocument()
+  })
+})
+
+describe('cheerful feedback', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  const praise = PRAISE_MESSAGES
+  const support = SUPPORT_MESSAGES
+  const liveRegion = () =>
+    document.querySelector<HTMLElement>('[aria-live="polite"]')!
+  /** The message on screen, if any: the one paragraph that is a feedback message. */
+  const shown = () =>
+    document.querySelector<HTMLElement>('p[data-kind]')?.textContent?.slice(1)
+
+  it('says nothing until the first question has been answered', () => {
+    renderSession()
+
+    expect(shown()).toBeUndefined()
+  })
+
+  it('praises what the student says they got right', async () => {
+    const user = userEvent.setup()
+    renderSession()
+
+    await answer(user, 'right')
+
+    expect(praise).toContain(shown())
+  })
+
+  it('encourages after what the student says they got wrong, without calling it wrong', async () => {
+    const user = userEvent.setup()
+    renderSession()
+
+    await answer(user, 'wrong')
+
+    expect(support).toContain(shown())
+    expect(shown()).not.toMatch(/wrong|incorrect|fail|bad/i)
+  })
+
+  it('has a new message for each answer, never the same one twice in a row', async () => {
+    const user = userEvent.setup()
+    // A random source that always says "the first", so only the rule can keep a message from repeating.
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    renderSession({ sessionLength: 'continuous' })
+
+    let previous: string | undefined
+    for (let count = 0; count < 12; count++) {
+      await answer(user, count % 3 === 2 ? 'wrong' : 'right')
+      expect(shown()).toBeTruthy()
+      expect(shown()).not.toBe(previous)
+      previous = shown()
+    }
+  })
+
+  it('is drawn again for each answer, so that it pops in again', async () => {
+    const user = userEvent.setup()
+    renderSession({ sessionLength: 'continuous' })
+
+    await answer(user, 'right')
+    const first = document.querySelector('p[data-kind]')
+    await answer(user, 'right')
+
+    expect(document.querySelector('p[data-kind]')).not.toBe(first)
+    expect(first).not.toBeInTheDocument()
+  })
+
+  it('is not a live region itself, and has no sound', async () => {
+    const user = userEvent.setup()
+    renderSession()
+
+    await answer(user, 'right')
+
+    expect(document.querySelector('p[data-kind]')!.closest('[aria-live]')).toBe(
+      null,
+    )
+    expect(document.querySelector('audio')).toBeNull()
+  })
+
+  it('is said once with the next question, for a screen reader, in order', async () => {
+    const user = userEvent.setup()
+    renderSession()
+
+    await answer(user, 'right')
+
+    const heard = liveRegion().textContent!
+    expect(heard).toBe(`${shown()} Question 2 of 5. 1 of 5 answered.`)
+
+    // The next thing announced is not preceded by it again.
+    await user.keyboard('2')
+    expect(liveRegion().textContent).toMatch(/^You picked \d+, answer 2\./)
+  })
+
+  it('is left out, and not said, when feedback effects are off', async () => {
+    const user = userEvent.setup()
+    window.localStorage.setItem(
+      STORAGE_KEYS.settings,
+      JSON.stringify({ feedbackEffectsEnabled: false }),
+    )
+    renderSession()
+
+    await answer(user, 'right')
+    await answer(user, 'wrong')
+
+    expect(shown()).toBeUndefined()
+    expect(liveRegion().textContent).toBe('Question 3 of 5. 2 of 5 answered.')
+  })
+
+  it('is on for a student whose settings were saved before there was a switch for it', async () => {
+    const user = userEvent.setup()
+    window.localStorage.setItem(
+      STORAGE_KEYS.settings,
+      JSON.stringify({ soundEffectsEnabled: false }),
+    )
+    renderSession()
+
+    await answer(user, 'right')
+
+    expect(shown()).toBeTruthy()
+  })
+
+  it('does not get in the way of the question: focus stays on it', async () => {
+    const user = userEvent.setup()
+    renderSession()
+
+    await answer(user, 'right')
+
+    expect(document.activeElement).toBe(questionHeading())
+  })
+})
+
+describe('leaving a session in progress', () => {
+  const leaveDialog = () =>
+    screen.queryByRole('dialog', { name: 'Leave this session?' })
+  const confirmLeave = (user: User) =>
+    user.click(
+      within(leaveDialog()!).getByRole('button', {
+        name: /^(Leave|End Session and Leave)$/,
+      }),
+    )
+  const location = (router: { state: { location: { pathname: string } } }) =>
+    router.state.location.pathname
+
+  describe('asks first', () => {
+    it('when the student tries to go to another page', async () => {
+      const { router } = renderSession()
+
+      await act(() => router.navigate('/statistics'))
+
+      expect(leaveDialog()).toBeInTheDocument()
+      expect(location(router)).toBe('/practice/session')
+    })
+
+    it('when a link in the navigation is used', async () => {
+      const user = userEvent.setup()
+      renderSession()
+
+      await user.click(screen.getByRole('link', { name: 'Statistics' }))
+
+      expect(leaveDialog()).toBeInTheDocument()
+    })
+
+    it('when the back button is used', async () => {
+      const user = userEvent.setup()
+      const { router } = renderApp('/practice/setup')
+      await user.click(screen.getByRole('checkbox', { name: 'Addition' }))
+      await user.click(screen.getByRole('button', { name: 'Start Session' }))
+      expect(location(router)).toBe('/practice/session')
+
+      await act(() => router.navigate(-1))
+
+      expect(leaveDialog()).toBeInTheDocument()
+      expect(location(router)).toBe('/practice/session')
+    })
+
+    it('says what leaving does, with how many questions were answered', async () => {
+      const user = userEvent.setup()
+      const { router } = renderSession()
+      await answer(user)
+
+      await act(() => router.navigate('/'))
+
+      expect(leaveDialog()).toHaveTextContent(
+        'You have answered 1 question so far. If you leave, the session ends, and your answers stay in your statistics.',
+      )
+      expect(
+        within(leaveDialog()!).getByRole('button', {
+          name: 'End Session and Leave',
+        }),
+      ).toBeVisible()
+    })
+
+    it('and says there is nothing to lose when nothing was answered', async () => {
+      const { router } = renderSession()
+
+      await act(() => router.navigate('/'))
+
+      expect(leaveDialog()).toHaveTextContent(
+        'You have not answered any questions yet, so nothing will be kept if you leave.',
+      )
+      expect(
+        within(leaveDialog()!).getByRole('button', { name: 'Leave' }),
+      ).toBeVisible()
+    })
+
+    it('only for a move to a different page, not for staying on this one', async () => {
+      const { router } = renderSession()
+
+      await act(() => router.navigate('/practice/session', { replace: true }))
+
+      expect(leaveDialog()).not.toBeInTheDocument()
+      expect(location(router)).toBe('/practice/session')
+    })
+
+    it('every time, not just the first', async () => {
+      const user = userEvent.setup()
+      const { router } = renderSession()
+
+      await act(() => router.navigate('/'))
+      await user.click(
+        within(leaveDialog()!).getByRole('button', { name: 'Keep Practicing' }),
+      )
+      await act(() => router.navigate('/settings'))
+
+      expect(leaveDialog()).toBeInTheDocument()
+    })
+
+    it('with focus on the safe choice, to stay', async () => {
+      const { router } = renderSession()
+
+      await act(() => router.navigate('/'))
+
+      expect(document.activeElement).toBe(
+        within(leaveDialog()!).getByRole('button', { name: 'Keep Practicing' }),
+      )
+    })
+  })
+
+  describe('lets the student stay', () => {
+    it('with Keep Practicing: the same question, still in progress', async () => {
+      const user = userEvent.setup()
+      const { router, probe } = renderSession()
+      const before = probe().currentQuestionId
+      await act(() => router.navigate('/'))
+
+      await user.click(
+        within(leaveDialog()!).getByRole('button', { name: 'Keep Practicing' }),
+      )
+
+      expect(leaveDialog()).not.toBeInTheDocument()
+      expect(location(router)).toBe('/practice/session')
+      expect(probe().isActive).toBe(true)
+      expect(probe().currentQuestionId).toBe(before)
+      expect(screen.getByText('Question 1 of 5')).toBeInTheDocument()
+    })
+
+    it('with Escape', async () => {
+      const { router, probe } = renderSession()
+      await act(() => router.navigate('/'))
+
+      fireEvent(
+        screen.getByRole('dialog', { name: 'Leave this session?' }),
+        new Event('cancel', { cancelable: true }),
+      )
+
+      expect(location(router)).toBe('/practice/session')
+      expect(probe().isActive).toBe(true)
+    })
+
+    it('and can carry on answering afterwards', async () => {
+      const user = userEvent.setup()
+      const { router, probe } = renderSession()
+      await act(() => router.navigate('/'))
+      await user.click(
+        within(leaveDialog()!).getByRole('button', { name: 'Keep Practicing' }),
+      )
+
+      await answer(user)
+
+      expect(probe().session?.attempted).toBe(1)
+      expect(screen.getByText('Question 2 of 5')).toBeInTheDocument()
+    })
+
+    it('without losing the answer that was picked on the card', async () => {
+      const user = userEvent.setup()
+      const { router } = renderSession()
+      const choices = within(screen.getByRole('group')).getAllByRole('button')
+      await user.click(choices[2])
+      await act(() => router.navigate('/'))
+
+      await user.click(
+        within(leaveDialog()!).getByRole('button', { name: 'Keep Practicing' }),
+      )
+
+      expect(
+        within(screen.getByRole('group')).getAllByRole('button')[2],
+      ).toHaveAttribute('aria-pressed', 'true')
+    })
+  })
+
+  describe('lets the student leave', () => {
+    it('ending the session, with what was answered kept, and going where they chose', async () => {
+      const user = userEvent.setup()
+      const { router, probe } = renderSession()
+      await answer(user, 'right')
+      await act(() => router.navigate('/statistics'))
+
+      await confirmLeave(user)
+
+      expect(location(router)).toBe('/statistics')
+      expect(probe().isActive).toBe(false)
+      expect(probe().session?.completedAt).toBeDefined()
+      expect(probe().session).toMatchObject({ attempted: 1, correct: 1 })
+      expect(probe().attempts).toHaveLength(1)
+    })
+
+    it('without a stop at the summary on the way', async () => {
+      const user = userEvent.setup()
+      const { router } = renderSession()
+      await answer(user)
+      const visited: string[] = []
+      const stop = router.subscribe((state) => {
+        visited.push(state.location.pathname)
+      })
+      await act(() => router.navigate('/settings'))
+
+      await confirmLeave(user)
+      stop()
+
+      expect(visited).not.toContain('/practice/summary')
+      expect(location(router)).toBe('/settings')
+    })
+
+    it('throwing the session away when nothing was answered', async () => {
+      const user = userEvent.setup()
+      const { router, probe } = renderSession()
+      await act(() => router.navigate('/statistics'))
+
+      await confirmLeave(user)
+
+      expect(location(router)).toBe('/statistics')
+      expect(probe().session).toBeNull()
+      expect(probe().isActive).toBe(false)
+    })
+
+    it('with the back button too', async () => {
+      const user = userEvent.setup()
+      const { router, probe } = renderApp('/practice/setup')
+      await user.click(screen.getByRole('checkbox', { name: 'Addition' }))
+      await user.click(screen.getByRole('button', { name: 'Start Session' }))
+      await act(() => router.navigate(-1))
+
+      await confirmLeave(user)
+
+      expect(location(router)).toBe('/practice/setup')
+      expect(probe().isActive).toBe(false)
+    })
+
+    it('and shows nothing of the page meanwhile', async () => {
+      const user = userEvent.setup()
+      const { router } = renderSession()
+      await act(() => router.navigate('/settings'))
+
+      await confirmLeave(user)
+
+      expect(screen.queryByText(/Question \d/)).not.toBeInTheDocument()
+      expect(leaveDialog()).not.toBeInTheDocument()
+    })
+  })
+
+  describe('does not ask', () => {
+    it('after the last question, when the summary opens', async () => {
+      const user = userEvent.setup()
+      const { router } = renderSession({ sessionLength: 1 })
+
+      await answer(user)
+
+      expect(location(router)).toBe('/practice/summary')
+      expect(leaveDialog()).not.toBeInTheDocument()
+    })
+
+    it('after End Session in continuous practice, when the summary opens', async () => {
+      const user = userEvent.setup()
+      const { router } = renderSession({ sessionLength: 'continuous' })
+      await answer(user)
+
+      await user.click(screen.getByRole('button', { name: 'End Session' }))
+      await user.click(
+        within(
+          screen.getByRole('dialog', { name: 'End this session?' }),
+        ).getByRole('button', { name: 'End Session' }),
+      )
+
+      expect(location(router)).toBe('/practice/summary')
+      expect(leaveDialog()).not.toBeInTheDocument()
+    })
+
+    it('after End Session with nothing answered, when the setup page opens', async () => {
+      const user = userEvent.setup()
+      const { router } = renderSession({ sessionLength: 'continuous' })
+
+      await user.click(screen.getByRole('button', { name: 'End Session' }))
+
+      expect(location(router)).toBe('/practice/setup')
+      expect(leaveDialog()).not.toBeInTheDocument()
+    })
+
+    it('once a session has ended, wherever the student goes next', async () => {
+      const user = userEvent.setup()
+      const { router } = renderSession({ sessionLength: 1 })
+      await answer(user)
+
+      await act(() => router.navigate('/statistics'))
+
+      expect(location(router)).toBe('/statistics')
+      expect(leaveDialog()).not.toBeInTheDocument()
+    })
+
+    it('when there is no session to leave', async () => {
+      const { router } = renderApp('/practice/session', {
+        initialState: endedSessionState(),
+      })
+
+      await act(() => router.navigate('/'))
+
+      expect(location(router)).toBe('/')
+    })
+  })
+
+  describe('and the browser, when the page is closed or refreshed', () => {
+    const closing = () => {
+      const event = new Event('beforeunload', { cancelable: true })
+      window.dispatchEvent(event)
+      return event.defaultPrevented
+    }
+    let restore: (() => void) | undefined
+    afterEach(() => {
+      restore?.()
+      restore = undefined
+    })
+
+    it('is not asked to warn while the session is being saved, as nothing would be lost', () => {
+      renderSession()
+
+      expect(closing()).toBe(false)
+    })
+
+    it('is asked to warn when the session cannot be saved, as it would be lost', () => {
+      restore = blockStorage()
+      renderSession()
+
+      expect(closing()).toBe(true)
+    })
+
+    it('is asked to warn once saving fails part way through', async () => {
+      const user = userEvent.setup()
+      renderSession()
+      expect(closing()).toBe(false)
+
+      restore = fillStorage()
+      await answer(user)
+
+      expect(closing()).toBe(true)
+    })
+
+    it('stops asking when the session ends', async () => {
+      restore = blockStorage()
+      const user = userEvent.setup()
+      renderSession({ sessionLength: 1 })
+      expect(closing()).toBe(true)
+
+      await answer(user)
+
+      expect(closing()).toBe(false)
+    })
+
+    it('stops asking when the student leaves the page', async () => {
+      restore = blockStorage()
+      const user = userEvent.setup()
+      const { router } = renderSession()
+      await act(() => router.navigate('/'))
+
+      await confirmLeave(user)
+
+      expect(closing()).toBe(false)
+    })
+
+    it('is not asked on the other pages, where no session is being answered', () => {
+      restore = blockStorage()
+      renderApp('/practice/summary', { initialState: endedSessionState() })
+
+      expect(closing()).toBe(false)
+    })
+  })
+})
+
+describe('a session brought back after a refresh', () => {
+  const welcome = () =>
+    screen.queryByText('Welcome back! Your session is right where you left it.')
+  const live = () =>
+    document.querySelector<HTMLElement>('[aria-live="polite"]')!
+
+  it('opens at the question it was on, saying that it is back', () => {
+    const state = inProgressSessionState({}, { correct: 1, incorrect: 1 })
+    saveSessionInProgress(state)
+
+    renderApp('/practice/session')
+
+    expect(welcome()).toBeVisible()
+    expect(screen.getByText('Question 3 of 5')).toBeInTheDocument()
+    expect(
+      screen.getByRole('progressbar', { name: 'Session progress' }),
+    ).toHaveAttribute('aria-valuetext', '2 of 5 questions answered')
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent(
+      `${state.currentQuestion!.displayText} = ?`,
+    )
+  })
+
+  it('says so to a screen reader too, along with the question, as one announcement', () => {
+    saveSessionInProgress(inProgressSessionState({}, { correct: 1 }))
+
+    renderApp('/practice/session')
+
+    expect(live()).toHaveTextContent(
+      'Welcome back! Your session is right where you left it. Question 2 of 5. 1 of 5 answered.',
+    )
+  })
+
+  it('stops saying so after the next answer', async () => {
+    const user = userEvent.setup()
+    saveSessionInProgress(inProgressSessionState({}, { correct: 1 }))
+    renderApp('/practice/session')
+
+    await answer(user)
+
+    expect(welcome()).not.toBeInTheDocument()
+    expect(live()).not.toHaveTextContent('Welcome back')
+  })
+
+  it('does not say so for a session that was started in this visit', () => {
+    renderSession()
+
+    expect(welcome()).not.toBeInTheDocument()
+  })
+
+  it('does not say so on the setup page, or for a different session started afterwards', async () => {
+    const user = userEvent.setup()
+    saveSessionInProgress(inProgressSessionState({}, { correct: 1 }))
+    const { router } = renderApp('/practice/setup')
+    await user.click(screen.getByRole('checkbox', { name: 'Addition' }))
+    await user.click(screen.getByRole('button', { name: 'Start Session' }))
+
+    expect(router.state.location.pathname).toBe('/practice/session')
+    expect(welcome()).not.toBeInTheDocument()
+  })
+
+  it('has the answer that was picked still picked', () => {
+    const state = inProgressSessionState({}, { correct: 1 })
+    const answerPicked = state.currentQuestion!.choices[1]
+    saveSessionInProgress(state, {
+      selectedAnswer: answerPicked,
+      flipped: false,
+    })
+
+    renderApp('/practice/session')
+
+    expect(
+      within(screen.getByRole('group')).getAllByRole('button')[1],
+    ).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('has the card still turned over, if it was, ready to say how it went', async () => {
+    const user = userEvent.setup()
+    const state = inProgressSessionState({}, { correct: 1 })
+    const answerPicked = state.currentQuestion!.choices[2]
+    saveSessionInProgress(state, {
+      selectedAnswer: answerPicked,
+      flipped: true,
+    })
+    const { probe } = renderApp('/practice/session')
+
+    expect(screen.getByText(`Your answer: ${answerPicked}`)).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'I Got It Right' }))
+
+    expect(probe().session).toMatchObject({ attempted: 2, correct: 2 })
+    expect(probe().attempts.at(-1)?.selectedAnswer).toBe(answerPicked)
+  })
+
+  it('goes on to the end, which opens the summary', async () => {
+    const user = userEvent.setup()
+    saveSessionInProgress(
+      inProgressSessionState({}, { correct: 3, incorrect: 1 }),
+    )
+    const { router, probe } = renderApp('/practice/session')
+
+    await answer(user)
+
+    expect(router.state.location.pathname).toBe('/practice/summary')
+    expect(probe().session).toMatchObject({
+      attempted: 5,
+      correct: 4,
+      incorrect: 1,
+    })
+    expect(window.localStorage.getItem(STORAGE_KEYS.activeSession)).toBeNull()
+  })
+
+  it('asks before leaving, like any session in progress', async () => {
+    saveSessionInProgress(inProgressSessionState({}, { correct: 1 }))
+    const { router } = renderApp('/practice/session')
+
+    await act(() => router.navigate('/'))
+
+    expect(
+      screen.getByRole('dialog', { name: 'Leave this session?' }),
+    ).toBeInTheDocument()
+  })
+})
+
+describe('sound effects on the practice page', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function countAudio() {
+    const made = { contexts: 0 }
+    vi.stubGlobal(
+      'AudioContext',
+      class {
+        state = 'running'
+        currentTime = 0
+        destination = {}
+        constructor() {
+          made.contexts++
+        }
+        createOscillator() {
+          return {
+            frequency: { setValueAtTime() {}, linearRampToValueAtTime() {} },
+            connect() {},
+            start() {},
+            stop() {},
+          }
+        }
+        createGain() {
+          return {
+            gain: { setValueAtTime() {}, linearRampToValueAtTime() {} },
+            connect() {},
+          }
+        }
+      },
+    )
+    return made
+  }
+
+  it('are silent when off, which they are to begin with', async () => {
+    const made = countAudio()
+    const user = userEvent.setup()
+    renderSession()
+
+    await answer(user)
+
+    expect(made.contexts).toBe(0)
+  })
+
+  it('play when turned on in Settings', async () => {
+    const { resetSoundsForTests } = await import('../services/sounds')
+    resetSoundsForTests()
+    const made = countAudio()
+    window.localStorage.setItem(
+      STORAGE_KEYS.settings,
+      JSON.stringify({ soundEffectsEnabled: true }),
+    )
+    const user = userEvent.setup()
+    renderSession()
+
+    await answer(user)
+
+    expect(made.contexts).toBe(1)
+    resetSoundsForTests()
   })
 })

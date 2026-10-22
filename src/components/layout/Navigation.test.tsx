@@ -7,6 +7,14 @@ function mainNav() {
 }
 
 describe('Navigation', () => {
+  it('lets its bar grow into the space beside the brand, which the phone layout relies on', () => {
+    renderApp('/')
+
+    expect(screen.getByRole('navigation', { name: 'Main' }).className).toMatch(
+      /nav/,
+    )
+  })
+
   it('links to each top-level section', () => {
     renderApp('/')
 

@@ -29,3 +29,12 @@
     align-items: stretch;
   }
 }
+
+/* Why the student landed here, when they were heading somewhere else. */
+.notice {
+  margin: 0 0 var(--space-lg);
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-lg);
+  background: var(--color-primary-soft);
+  font-weight: 700;
+}

@@ -1,9 +1,14 @@
 import { act, fireEvent, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_SETTINGS } from '../constants/settings'
 import { listAppKeys, STORAGE_KEYS } from '../services/storageService'
-import { makeAttempt, makeMistakePattern, makeSession } from '../test/fixtures'
+import {
+  activeSessionState,
+  makeAttempt,
+  makeMistakePattern,
+  makeSession,
+} from '../test/fixtures'
 import { renderApp } from '../test/renderApp'
 import { blockStorage, breakStorageMethod, stored } from '../test/storage'
 
@@ -62,6 +67,7 @@ let restore: (() => void) | undefined
 afterEach(() => {
   restore?.()
   restore = undefined
+  vi.unstubAllGlobals()
 })
 
 describe('SettingsPage', () => {
@@ -148,11 +154,11 @@ describe('SettingsPage', () => {
       expect(window.localStorage.getItem(STORAGE_KEYS.settings)).toBeNull()
     })
 
-    it('is honest that sounds are not available yet', () => {
+    it('says what the sound effects are', () => {
       renderApp('/settings')
 
       expect(sound()).toHaveAccessibleDescription(
-        'Sounds are coming soon. Your choice will be remembered.',
+        'Short, gentle sounds when you pick an answer, turn the card over, and say how you did.',
       )
     })
   })
@@ -162,6 +168,7 @@ describe('SettingsPage', () => {
       ['Sound effects', 'soundEffectsEnabled', false],
       ['Card flip animation', 'cardAnimationEnabled', true],
       ['Show explanations', 'showExplanations', true],
+      ['Feedback effects', 'feedbackEffectsEnabled', true],
     ] as const)(
       '%s can be turned on and off, and is saved each time',
       async (name, key, startsOn) => {
@@ -548,11 +555,11 @@ describe('SettingsPage', () => {
 
       it('ends a practice session that was under way', async () => {
         const user = userEvent.setup()
-        const { router, probe } = renderApp('/practice/setup')
-        await user.click(screen.getByRole('checkbox', { name: 'Addition' }))
-        await user.click(screen.getByRole('button', { name: 'Start Session' }))
-        expect(probe().session).not.toBeNull()
-        await act(() => router.navigate('/settings'))
+        // Leaving a session ends it, so one is under way here only if it was brought back after a refresh.
+        const { probe } = renderApp('/settings', {
+          initialState: activeSessionState(),
+        })
+        expect(probe().isActive).toBe(true)
 
         await confirm(user)
 
@@ -814,6 +821,81 @@ describe('SettingsPage', () => {
           .getByRole('checkbox', { name: 'Show explanations' })
           .closest('label'),
       ).toHaveTextContent('✓')
+    })
+  })
+
+  describe('the device’s wish for reduced motion', () => {
+    const stubMotion = (reduce: boolean) =>
+      vi.stubGlobal('matchMedia', (query: string) => ({
+        matches: reduce,
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }))
+    const note =
+      'Your device is set to reduce motion, so cards never turn, whatever the card flip animation switch says.'
+
+    it('is explained beside the animation switch when the device asks for it', () => {
+      stubMotion(true)
+      renderApp('/settings')
+
+      expect(screen.getByText(note)).toBeVisible()
+    })
+
+    it('is not mentioned when the device does not ask', () => {
+      stubMotion(false)
+      renderApp('/settings')
+
+      expect(screen.queryByText(note)).not.toBeInTheDocument()
+    })
+
+    it('is not mentioned when the browser cannot say', () => {
+      renderApp('/settings')
+
+      expect(screen.queryByText(note)).not.toBeInTheDocument()
+    })
+
+    it('leaves the switch working, as it is still the student’s own choice', async () => {
+      stubMotion(true)
+      const user = userEvent.setup()
+      renderApp('/settings')
+
+      await user.click(animation())
+
+      expect(savedSettings()?.cardAnimationEnabled).toBe(false)
+    })
+  })
+
+  describe('SettingsPage and privacy', () => {
+    it('says the data stays in this browser, that nothing about the student is asked or sent', () => {
+      renderApp('/settings')
+
+      const data = screen.getByRole('region', { name: 'Your data' })
+      expect(data).toHaveTextContent(
+        'Everything is kept in this browser, on this device only. The app never asks who you are, and sends nothing anywhere.',
+      )
+    })
+
+    it('warns that clearing the browser’s data, or a private window, loses the progress', () => {
+      renderApp('/settings')
+
+      expect(
+        screen.getByRole('region', { name: 'Your data' }),
+      ).toHaveTextContent(
+        "Clearing this browser's history or site data erases your progress too, and a private window forgets it when it closes.",
+      )
+    })
+
+    it('has no box for typing anything, such as a name', () => {
+      for (const path of ['/', '/practice/setup', '/statistics', '/settings']) {
+        const { unmount } = renderApp(path)
+        expect(
+          document.querySelectorAll(
+            'input:not([type=checkbox]):not([type=radio]), textarea',
+          ),
+        ).toHaveLength(0)
+        unmount()
+      }
     })
   })
 })

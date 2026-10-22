@@ -11,6 +11,7 @@ import type {
   MathOperation,
   Question,
 } from '../types/question'
+import { logDevError } from '../utils/devLog'
 import { generateId } from '../utils/ids'
 import { calculateAnswer, randomInt, type RandomSource } from '../utils/math'
 import {
@@ -150,9 +151,109 @@ const GENERATORS: Record<
   division: generateDivisionQuestion,
 }
 
+/** How many questions are made and checked before the fallback question is used. */
+export const MAX_GENERATION_ATTEMPTS = 5
+
 /**
- * Generates one question for the operation and level, and checks it before
- * returning it. Throws QuestionGenerationError if that is not possible.
+ * A question that is always valid for the operation and level: the smallest
+ * numbers the level allows. It is used only when making a random question has
+ * failed again and again, so that a student is never left without one.
+ */
+export function fallbackQuestion(
+  operation: MathOperation,
+  difficulty: DifficultyLevel,
+): Question {
+  // Fixed choices of position, so the fallback is the same every time.
+  const steady: RandomSource = () => 0.5
+  switch (operation) {
+    case 'addition': {
+      const { min } = ADDITION_RULES[difficulty].operands
+      return buildQuestion(
+        operation,
+        difficulty,
+        { firstOperand: min, secondOperand: min },
+        steady,
+      )
+    }
+    case 'subtraction': {
+      const { min } = SUBTRACTION_RULES[difficulty].operands
+      return buildQuestion(
+        operation,
+        difficulty,
+        { firstOperand: min, secondOperand: min },
+        steady,
+      )
+    }
+    case 'multiplication': {
+      const [{ first, second }] = MULTIPLICATION_RULES[difficulty]
+      return buildQuestion(
+        operation,
+        difficulty,
+        { firstOperand: first.min, secondOperand: second.min },
+        steady,
+      )
+    }
+    case 'division': {
+      const rules = DIVISION_RULES[difficulty]
+      const divisor = rules.divisors[0].min
+      const quotient = quotientRangeFor(rules, divisor)?.min ?? 1
+      return buildQuestion(
+        operation,
+        difficulty,
+        { firstOperand: divisor * quotient, secondOperand: divisor },
+        steady,
+      )
+    }
+  }
+}
+
+/**
+ * Makes a question with `make` and checks it against the question rules
+ * (specification section 18). A question that fails, or a `make` that throws,
+ * is tried again, up to `maxAttempts` times; then `fallback` is used. Each
+ * failure is logged for developers. Throws QuestionGenerationError only if
+ * the fallback fails the rules too, which would mean the rules themselves are
+ * broken.
+ */
+export function generateCheckedQuestion(
+  make: () => Question,
+  fallback: () => Question,
+  maxAttempts: number = MAX_GENERATION_ATTEMPTS,
+): Question {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    let question: Question
+    try {
+      question = make()
+    } catch (error) {
+      logDevError(
+        `Making a question failed (attempt ${attempt} of ${maxAttempts}).`,
+        error,
+      )
+      continue
+    }
+    const problems = getQuestionProblems(question)
+    if (problems.length === 0) return question
+    logDevError(
+      `Made an invalid question, ${question.displayText} (attempt ${attempt} of ${maxAttempts}): ${problems.join('; ')}`,
+    )
+  }
+
+  const question = fallback()
+  const problems = getQuestionProblems(question)
+  if (problems.length > 0) {
+    throw new QuestionGenerationError(
+      `Even the fallback question is invalid (${question.displayText}): ${problems.join('; ')}`,
+    )
+  }
+  logDevError(`Using the fallback question ${question.displayText}.`)
+  return question
+}
+
+/**
+ * Generates one question for the operation and level, checked against the
+ * question rules, retrying and then falling back as generateCheckedQuestion
+ * does. Throws QuestionGenerationError for an operation or level that does not
+ * exist.
  */
 export function generateQuestion(
   operation: MathOperation,
@@ -170,24 +271,10 @@ export function generateQuestion(
     )
   }
 
-  let question: Question
-  try {
-    question = GENERATORS[operation](difficulty, random)
-  } catch (error) {
-    if (error instanceof QuestionGenerationError) throw error
-    throw new QuestionGenerationError(
-      `Could not generate a ${operation} question at Level ${difficulty}`,
-      { cause: error },
-    )
-  }
-
-  const problems = getQuestionProblems(question)
-  if (problems.length > 0) {
-    throw new QuestionGenerationError(
-      `Generated an invalid question (${question.displayText}): ${problems.join('; ')}`,
-    )
-  }
-  return question
+  return generateCheckedQuestion(
+    () => GENERATORS[operation](difficulty, random),
+    () => fallbackQuestion(operation, difficulty),
+  )
 }
 
 /** How many times to draw again when a new question matches the previous one. */

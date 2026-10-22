@@ -80,17 +80,30 @@
   --font-size-button: 1.25rem;
 
   /* Spacing, shape and layout. */
-  --space-xs: 0.25rem;
-  --space-sm: 0.5rem;
-  --space-md: 1rem;
-  --space-lg: 1.5rem;
-  --space-xl: 2.5rem;
+  /*
+   * Spacing follows the text size, but never takes more than a share of a
+   * narrow screen. Without the cap, a phone set to large text would spend a
+   * third of its width on gutters and padding.
+   */
+  --space-xs: min(0.25rem, 1.25vw);
+  --space-sm: min(0.5rem, 2.5vw);
+  --space-md: min(1rem, 4.5vw);
+  --space-lg: min(1.5rem, 6vw);
+  --space-xl: min(2.5rem, 9vw);
   --radius-lg: 1.25rem;
   --radius-pill: 999px;
   --shadow-card:
     0 4px 0 rgba(27, 36, 64, 0.06), 0 12px 32px rgba(27, 36, 64, 0.08);
   --page-max-width: 60rem;
-  --page-gutter: clamp(1rem, 4vw, 2rem);
+  /* The least height of anything that is tapped. Tablets, held by children, get a little more. */
+  --target-min: 2.75rem;
+  --page-gutter: min(clamp(1rem, 4vw, 2rem), 5vw);
+}
+
+@media (min-width: 48rem) {
+  :root {
+    --target-min: 3rem;
+  }
 }
 
 *,
@@ -101,6 +114,13 @@
 
 body {
   margin: 0;
+  /*
+   * A word too long for its line breaks, rather than pushing the page wider.
+   * That is only ever needed when text is made much bigger, such as a long
+   * word like "Multiplication" on a phone set to large text. "anywhere" also
+   * lets boxes shrink around such a word.
+   */
+  overflow-wrap: anywhere;
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-family);

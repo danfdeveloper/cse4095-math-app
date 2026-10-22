@@ -1,0 +1,36 @@
+/* Sits just above the card, and is only as loud as one line of text. */
+.message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  max-width: 40rem;
+  margin: 0 auto var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border: 3px solid var(--accent-bright);
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--color-text);
+  font-size: var(--font-size-base);
+  font-weight: 800;
+  text-align: center;
+  /* One short pop as it appears, and then it stands still. */
+  animation: feedback-pop 300ms ease-out;
+}
+
+.symbol {
+  color: var(--accent-deep);
+}
+
+@keyframes feedback-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message {
+    animation: none;
+  }
+}

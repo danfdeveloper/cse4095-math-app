@@ -52,6 +52,11 @@
   justify-content: space-between;
 }
 
+/* A long list of operations gets a row to itself, instead of wrapping inside half of one. */
+.wide {
+  grid-column: 1 / -1;
+}
+
 .label {
   color: var(--color-text-muted);
   font-weight: 700;

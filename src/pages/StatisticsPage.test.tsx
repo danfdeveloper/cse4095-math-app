@@ -1,14 +1,16 @@
-import { act, fireEvent, screen, within } from '@testing-library/react'
+import { fireEvent, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { STORAGE_KEYS } from '../services/storageService'
 import {
   finishedSessionState,
   historyState,
+  inProgressSessionState,
   makeMistakePattern,
   makeSession,
   reviewSessionState,
 } from '../test/fixtures'
+import { leaveTo } from '../test/leaveSession'
 import { renderApp } from '../test/renderApp'
 import { stored } from '../test/storage'
 import { formatSessionDate } from '../utils/format'
@@ -467,11 +469,21 @@ describe('StatisticsPage', () => {
     await user.click(screen.getByRole('button', { name: 'Flip Card' }))
     await user.click(screen.getByRole('button', { name: 'I Got It Wrong' }))
 
-    await act(() => router.navigate('/statistics'))
+    await leaveTo(router, '/statistics', user)
 
     expect(overall('Questions attempted')).toBe('1')
     expect(overall('Incorrect')).toBe('1')
     expect(overall('Accuracy')).toBe('0%')
+    // Leaving ended the session, so it is no longer in progress.
+    expect(screen.queryByText('In progress')).not.toBeInTheDocument()
+    expect(screen.queryByText('Not finished')).not.toBeInTheDocument()
+  })
+
+  it('shows a session brought back after a refresh as in progress', () => {
+    renderApp('/statistics', {
+      initialState: inProgressSessionState({}, { correct: 1 }),
+    })
+
     expect(screen.getByText('In progress')).toBeInTheDocument()
   })
 })
@@ -638,7 +650,7 @@ describe('StatisticsPage and mistakes', () => {
       const from = probe().currentQuestion!.mistakePatternId
 
       await answer(user, 'right')
-      await act(() => router.navigate('/statistics'))
+      await leaveTo(router, '/statistics', user)
 
       expect(tile('Similar questions practiced')).toBe('1')
       expect(tile('Review questions answered correctly')).toBe('1')
@@ -662,7 +674,7 @@ describe('StatisticsPage and mistakes', () => {
       })
 
       await answer(user, 'wrong')
-      await act(() => router.navigate('/statistics'))
+      await leaveTo(router, '/statistics', user)
 
       expect(tile('Similar questions practiced')).toBe('1')
       expect(tile('Review questions answered correctly')).toBe('0')
@@ -683,7 +695,7 @@ describe('StatisticsPage and mistakes', () => {
       })
 
       await answer(user, 'right')
-      await act(() => router.navigate('/statistics'))
+      await leaveTo(router, '/statistics', user)
 
       expect(tile('Mistakes to practice')).toBe('1')
       expect(tile('Mistakes mastered')).toBe('1')

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { ButtonLink } from '../components/common/Button'
+import { ResumeSession } from '../components/practice/ResumeSession'
 import styles from './HomePage.module.css'
 
 export function HomePage() {
@@ -33,6 +34,7 @@ export function HomePage() {
         Practice adding, subtracting, multiplying, and dividing with fun
         flashcards. Ready to become a math star?
       </p>
+      <ResumeSession />
       <div className={styles.actions}>
         <ButtonLink to="/practice/setup">Start Practice</ButtonLink>
         <ButtonLink to="/statistics" variant="secondary">

@@ -1,4 +1,4 @@
-import { useId, useState, type SubmitEvent } from 'react'
+import { useEffect, useId, useState, type SubmitEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { Button } from '../components/common/Button'
 import { DifficultySelector } from '../components/practice/DifficultySelector'
@@ -22,6 +22,14 @@ import styles from './PracticeSetupPage.module.css'
  * level is always chosen, because the page starts from the saved default.
  * Practicing mistakes also needs a mistake that the choices cover.
  */
+/** Why the student was sent here instead of where they were going, in plain words. */
+const MISSING_MESSAGES = {
+  session:
+    'There is no practice session going on right now. Choose what to practice, then press Start Session.',
+  summary:
+    'There are no results to show yet. Finish a practice session, and its results will appear.',
+} as const
+
 function getValidationMessage(
   operations: MathOperation[],
   mode: PracticeMode,
@@ -43,11 +51,22 @@ export function PracticeSetupPage() {
   // The page starts from the defaults saved on the settings page. Changing
   // them here only changes this session. Coming from a session summary
   // ("Change Settings"), it starts from that session's choices instead.
-  const { state } = useLocation()
+  const { state, pathname } = useLocation()
   const [previous] = useState(() => {
     const config = (state as { config?: unknown } | null)?.config
     return isPracticeConfig(config) ? config : null
   })
+  // Sent here from a page that had nothing to show. Said once, for this visit:
+  // it is taken out of the history entry, so a reload does not say it again.
+  const [missing] = useState<keyof typeof MISSING_MESSAGES | null>(() => {
+    const reason = (state as { missing?: unknown } | null)?.missing
+    return reason === 'session' || reason === 'summary' ? reason : null
+  })
+  useEffect(() => {
+    if (missing !== null) navigate(pathname, { replace: true, state: null })
+  }, [missing, navigate, pathname])
+  // Starting can fail only if no question could be made at all, which should never happen.
+  const [startFailed, setStartFailed] = useState(false)
   const [operations, setOperations] = useState<MathOperation[]>(() => [
     ...(previous?.operations ?? settings.defaultOperations),
   ])
@@ -87,11 +106,17 @@ export function PracticeSetupPage() {
       ...(mode === 'mistake-review' ? { mode } : {}),
     }
     if (startSession(config)) navigate('/practice/session')
+    else setStartFailed(true)
   }
 
   return (
     <>
       <h1>Practice Setup</h1>
+      {missing !== null && (
+        <p role="status" className={styles.notice}>
+          {MISSING_MESSAGES[missing]}
+        </p>
+      )}
       <p className={styles.intro}>
         Choose what you want to practice, then press Start Session.
       </p>
@@ -116,6 +141,12 @@ export function PracticeSetupPage() {
             Start Session
           </Button>
           {/* Visible text, because a disabled button cannot be focused to read a hint. */}
+          {startFailed && (
+            <p role="alert" className={styles.message}>
+              Sorry, something went wrong while getting your first question
+              ready. Please press Start Session to try again.
+            </p>
+          )}
           {validationMessage && (
             <p id={messageId} role="status" className={styles.message}>
               {validationMessage}

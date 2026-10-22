@@ -18,6 +18,8 @@ interface CardFrontProps {
   onFlip: () => void
   /** Lets the card move keyboard focus to the question. */
   headingRef: Ref<HTMLHeadingElement>
+  /** Lets the card move keyboard focus to the Flip Card button. */
+  flipRef?: Ref<HTMLButtonElement>
 }
 
 export function CardFront({
@@ -29,6 +31,7 @@ export function CardFront({
   onSelectAnswer,
   onFlip,
   headingRef,
+  flipRef,
 }: CardFrontProps) {
   const headingId = useId()
   const hintId = useId()
@@ -59,6 +62,8 @@ export function CardFront({
             key={choice}
             value={choice}
             accent={answerAccent(position)}
+            position={position + 1}
+            count={question.choices.length}
             selected={selectedAnswer === choice}
             disabled={locked}
             onSelect={onSelectAnswer}
@@ -67,6 +72,7 @@ export function CardFront({
       </div>
       <div className={styles.actions}>
         <Button
+          ref={flipRef}
           onClick={onFlip}
           disabled={selectedAnswer === null}
           aria-describedby={selectedAnswer === null ? hintId : undefined}

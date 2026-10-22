@@ -150,4 +150,28 @@ describe('RecentSessions', () => {
       expect(screen.getByText('Not finished')).toBeVisible()
     })
   })
+
+  it('gives the list of operations a row to itself, and no other fact', () => {
+    render(
+      <RecentSessions
+        sessions={rows({
+          id: 'a',
+          operations: ['addition', 'multiplication'],
+        })}
+      />,
+    )
+
+    const row = (label: string) =>
+      screen.getByText(label, { selector: 'dt' }).parentElement!
+    expect(row('Operations').className).toMatch(/wide/)
+    for (const label of [
+      'Difficulty',
+      'Questions attempted',
+      'Correct',
+      'Incorrect',
+      'Accuracy',
+    ]) {
+      expect(row(label).className).not.toMatch(/wide/)
+    }
+  })
 })

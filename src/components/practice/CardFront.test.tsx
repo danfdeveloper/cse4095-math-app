@@ -57,12 +57,11 @@ describe('CardFront', () => {
 
     const group = screen.getByRole('group', { name: 'What is 7 times 8?' })
     const buttons = within(group).getAllByRole('button')
-    expect(buttons.map((b) => b.textContent?.replace('✓', ''))).toEqual([
-      '48',
-      '54',
-      '56',
-      '64',
-    ])
+    // Each is named by its number alone; the key hint beside it is only for the eye.
+    expect(buttons).toHaveLength(4)
+    ;['48', '54', '56', '64'].forEach((name, index) =>
+      expect(buttons[index]).toHaveAccessibleName(name),
+    )
   })
 
   it('shows the current question number and the total', () => {
@@ -75,7 +74,7 @@ describe('CardFront', () => {
     render(<Harness questionNumber={4} totalQuestions={null} />)
 
     expect(screen.getByText('Question 4')).toBeInTheDocument()
-    expect(screen.queryByText(/ of /)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Question \d+ of /)).not.toBeInTheDocument()
   })
 
   describe('Flip Card button', () => {
@@ -249,5 +248,36 @@ describe('CardFront and the colours of its answers', () => {
       .filter((b) => b.getAttribute('aria-pressed') === 'true')
     expect(picked).toHaveLength(1)
     expect(picked[0]).toHaveTextContent('✓')
+  })
+})
+
+describe('CardFront and the numbering of its answers', () => {
+  const choices = () => within(screen.getByRole('group')).getAllByRole('button')
+
+  it('numbers the four choices 1 to 4, in the order shown, for the number keys', () => {
+    render(<Harness />)
+
+    expect(choices().map((b) => b.getAttribute('aria-keyshortcuts'))).toEqual([
+      '1',
+      '2',
+      '3',
+      '4',
+    ])
+  })
+
+  it('says which answer each one is, out of how many', () => {
+    render(<Harness />)
+
+    choices().forEach((button, index) =>
+      expect(button).toHaveAccessibleDescription(`Answer ${index + 1} of 4`),
+    )
+  })
+
+  it('numbers them by where they are shown, whatever their values', () => {
+    render(<Harness />)
+
+    // The question's choices are 48, 54, 56 and 64, shown in that order.
+    expect(choices()[2]).toHaveAccessibleName('56')
+    expect(choices()[2]).toHaveAttribute('aria-keyshortcuts', '3')
   })
 })

@@ -1,3 +1,4 @@
+import { statisticsFromAttempts } from './statisticsService'
 import { describe, expect, it } from 'vitest'
 import { makeAttempt, makeMistakePattern } from '../test/fixtures'
 import type { MistakePattern } from '../types/mistake'
@@ -351,7 +352,7 @@ describe('buildMistakeStatistics (Task 63)', () => {
           similarCorrectCount: 3,
         }),
       ],
-      [],
+      statisticsFromAttempts([]),
     )
 
     expect(stats.active).toBe(2)
@@ -361,13 +362,13 @@ describe('buildMistakeStatistics (Task 63)', () => {
   it('counts the review questions answered, and those answered correctly', () => {
     const stats = buildMistakeStatistics(
       [],
-      [
+      statisticsFromAttempts([
         review('a', true),
         review('b', false),
         review('c', true),
         regular('d', true),
         regular('e', false),
-      ],
+      ]),
     )
 
     expect(stats.similarPracticed).toBe(3)
@@ -377,7 +378,7 @@ describe('buildMistakeStatistics (Task 63)', () => {
   it('counts nothing from regular practice', () => {
     const stats = buildMistakeStatistics(
       [],
-      [regular('a', true), regular('b', false)],
+      statisticsFromAttempts([regular('a', true), regular('b', false)]),
     )
 
     expect(stats.similarPracticed).toBe(0)
@@ -387,7 +388,7 @@ describe('buildMistakeStatistics (Task 63)', () => {
   it('includes the most missed operation and the missed facts', () => {
     const stats = buildMistakeStatistics(
       [mistake('division', 56, 7, 3, 1), mistake('addition', 1, 2, 1, 1)],
-      [],
+      statisticsFromAttempts([]),
     )
 
     expect(stats.mostMissedOperation).toEqual({
@@ -401,7 +402,7 @@ describe('buildMistakeStatistics (Task 63)', () => {
   })
 
   it('is all zeros and nothing for no mistakes and no attempts', () => {
-    expect(buildMistakeStatistics([], [])).toEqual({
+    expect(buildMistakeStatistics([], statisticsFromAttempts([]))).toEqual({
       active: 0,
       mastered: 0,
       similarPracticed: 0,

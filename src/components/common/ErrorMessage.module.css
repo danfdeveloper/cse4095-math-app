@@ -1,0 +1,14 @@
+.error {
+  max-width: 36rem;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.text {
+  margin-bottom: var(--space-lg);
+  font-size: var(--font-size-lg);
+}
+
+.text p {
+  margin: 0 0 var(--space-sm);
+}

@@ -1,4 +1,9 @@
-import type { DifficultyLevel, MathOperation, QuestionSource } from './question'
+import type {
+  DifficultyLevel,
+  MathOperation,
+  Question,
+  QuestionSource,
+} from './question'
 
 export type SessionLength = number | 'continuous'
 
@@ -58,4 +63,21 @@ export interface PracticeSession {
   incorrect: number
   /** Left out for regular practice, and for sessions saved before review mode existed. */
   mode?: PracticeMode
+}
+
+/** What the student has done with the card on screen: the answer picked, and whether it is turned over. */
+export interface CardProgress {
+  selectedAnswer: number | null
+  flipped: boolean
+}
+
+/**
+ * A session in progress, as it is saved so that a refresh does not lose it: the
+ * session, the question on screen, and what has been done with that question.
+ * Which question number it is comes from the saved attempts, not from here.
+ */
+export interface SavedActiveSession {
+  session: PracticeSession
+  currentQuestion: Question
+  card: CardProgress
 }

@@ -8,12 +8,14 @@ import { DifficultySelector } from '../components/practice/DifficultySelector'
 import { OperationSelector } from '../components/practice/OperationSelector'
 import { SessionLengthSelector } from '../components/practice/SessionLengthSelector'
 import { MASTERY_THRESHOLD_RANGE } from '../constants/settings'
+import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion'
 import { useSettings } from '../hooks/useSettings'
 import styles from './SettingsPage.module.css'
 
 export function SettingsPage() {
   const navigate = useNavigate()
   const { settings, updateSettings, clearAllData } = useSettings()
+  const prefersReducedMotion = usePrefersReducedMotion()
   const [confirmingClear, setConfirmingClear] = useState(false)
   const [clearFailed, setClearFailed] = useState(false)
   const optionsId = useId()
@@ -53,7 +55,7 @@ export function SettingsPage() {
             type="checkbox"
             label="Sound effects"
             accent="pink"
-            description="Sounds are coming soon. Your choice will be remembered."
+            description="Short, gentle sounds when you pick an answer, turn the card over, and say how you did."
             checked={settings.soundEffectsEnabled}
             onChange={() =>
               updateSettings({
@@ -83,7 +85,26 @@ export function SettingsPage() {
               updateSettings({ showExplanations: !settings.showExplanations })
             }
           />
+          <OptionCard
+            type="checkbox"
+            label="Feedback effects"
+            accent="purple"
+            description="Show a short, cheerful message after each question. When off, the app stays quiet."
+            checked={settings.feedbackEffectsEnabled}
+            onChange={() =>
+              updateSettings({
+                feedbackEffectsEnabled: !settings.feedbackEffectsEnabled,
+              })
+            }
+          />
         </OptionGroup>
+        {/* The device's own wish for less motion wins, so say so rather than leave the switch looking as if it matters. */}
+        {prefersReducedMotion && (
+          <p className={styles.note}>
+            Your device is set to reduce motion, so cards never turn, whatever
+            the card flip animation switch says.
+          </p>
+        )}
       </section>
 
       <section className={styles.section} aria-labelledby={startingId}>
@@ -147,8 +168,14 @@ export function SettingsPage() {
       <section className={styles.section} aria-labelledby={dataId}>
         <h2 id={dataId}>Your data</h2>
         <p className={styles.note}>
-          Everything is kept on this device only. You can erase all of it,
-          including your settings, practice history, statistics and mistakes.
+          Everything is kept in this browser, on this device only. The app never
+          asks who you are, and sends nothing anywhere.
+        </p>
+        <p className={styles.note}>
+          Clearing this browser&apos;s history or site data erases your progress
+          too, and a private window forgets it when it closes. You can also
+          erase all of it here, including your settings, practice history,
+          statistics and mistakes.
         </p>
         <Button variant="secondary" onClick={() => setConfirmingClear(true)}>
           Clear All Application Data

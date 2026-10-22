@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { DIFFICULTY_LEVELS, MATH_OPERATIONS } from '../constants/practice'
 import { ALMOST_ONE, seededRandom, sequenceRandom } from '../test/seededRandom'
 import type {
@@ -6,7 +6,7 @@ import type {
   MathOperation,
   Question,
 } from '../types/question'
-import { isValidQuestion } from '../utils/validation'
+import { getQuestionProblems, isValidQuestion } from '../utils/validation'
 import {
   generateAdditionQuestion,
   generateDivisionQuestion,
@@ -16,6 +16,9 @@ import {
   generateQuestionForOperations,
   generateSubtractionQuestion,
   MAX_REPEAT_RETRIES,
+  fallbackQuestion,
+  generateCheckedQuestion,
+  MAX_GENERATION_ATTEMPTS,
   QuestionGenerationError,
 } from './questionGenerator'
 
@@ -400,25 +403,21 @@ describe('generateQuestion', () => {
     },
   )
 
-  it('turns an unexpected failure into a QuestionGenerationError', () => {
-    const cause = new Error('boom')
+  it('gives a valid fallback question, instead of failing, when making one keeps throwing', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
     const failing = () => {
-      throw cause
+      throw new Error('boom')
     }
 
-    try {
-      generateQuestion('addition', 1, failing)
-      expect.unreachable('should have thrown')
-    } catch (error) {
-      expect(error).toBeInstanceOf(QuestionGenerationError)
-      expect((error as QuestionGenerationError).name).toBe(
-        'QuestionGenerationError',
-      )
-      expect((error as QuestionGenerationError).message).toMatch(
-        /addition.*Level 1/,
-      )
-      expect((error as QuestionGenerationError).cause).toBe(cause)
-    }
+    const question = generateQuestion('addition', 1, failing)
+
+    expect(question).toEqual({
+      ...fallbackQuestion('addition', 1),
+      id: question.id,
+    })
+    expect(getQuestionProblems(question)).toEqual([])
+    expect(errors).toHaveBeenCalledTimes(MAX_GENERATION_ATTEMPTS + 1)
+    errors.mockRestore()
   })
 })
 
@@ -539,5 +538,129 @@ describe('generateNextQuestion', () => {
     expect(() => generateNextQuestion([], 1, { displayText: '1 + 1' })).toThrow(
       QuestionGenerationError,
     )
+  })
+})
+
+describe('fallbackQuestion', () => {
+  const every = MATH_OPERATIONS.flatMap((operation) =>
+    DIFFICULTY_LEVELS.map((level) => [operation, level] as const),
+  )
+
+  it.each(every)('is a valid %s question at Level %i', (operation, level) => {
+    const question = fallbackQuestion(operation, level)
+
+    expect(getQuestionProblems(question)).toEqual([])
+    expect(question).toMatchObject({
+      operation,
+      difficulty: level,
+      source: 'regular',
+    })
+  })
+
+  it('is the same question each time, apart from its id', () => {
+    const { id: first, ...a } = fallbackQuestion('division', 3)
+    const { id: second, ...b } = fallbackQuestion('division', 3)
+
+    expect(a).toEqual(b)
+    expect(first).not.toBe(second)
+  })
+})
+
+describe('generateCheckedQuestion', () => {
+  const good = () => fallbackQuestion('multiplication', 2)
+  const bad = () => ({ ...good(), correctAnswer: good().correctAnswer + 1 })
+  const silenced = () => vi.spyOn(console, 'error').mockImplementation(() => {})
+
+  it('hands back a valid question at once, saying nothing', () => {
+    const errors = silenced()
+    const make = vi.fn(good)
+
+    expect(getQuestionProblems(generateCheckedQuestion(make, bad))).toEqual([])
+    expect(make).toHaveBeenCalledTimes(1)
+    expect(errors).not.toHaveBeenCalled()
+    errors.mockRestore()
+  })
+
+  it('tries again after an invalid question, and keeps the first valid one', () => {
+    const errors = silenced()
+    const valid = good()
+    const make = vi
+      .fn<() => ReturnType<typeof good>>()
+      .mockReturnValueOnce(bad())
+      .mockReturnValueOnce(bad())
+      .mockReturnValueOnce(valid)
+    const fallback = vi.fn(good)
+
+    expect(generateCheckedQuestion(make, fallback)).toBe(valid)
+    expect(make).toHaveBeenCalledTimes(3)
+    expect(fallback).not.toHaveBeenCalled()
+    expect(errors).toHaveBeenCalledTimes(2)
+    errors.mockRestore()
+  })
+
+  it('tries again when making a question throws', () => {
+    const errors = silenced()
+    const valid = good()
+    const make = vi
+      .fn<() => ReturnType<typeof good>>()
+      .mockImplementationOnce(() => {
+        throw new Error('boom')
+      })
+      .mockReturnValueOnce(valid)
+
+    expect(generateCheckedQuestion(make, bad)).toBe(valid)
+    errors.mockRestore()
+  })
+
+  it('stops after the most attempts allowed, and uses the fallback', () => {
+    const errors = silenced()
+    const make = vi.fn(bad)
+    const fallback = vi.fn(good)
+
+    const question = generateCheckedQuestion(make, fallback)
+
+    expect(make).toHaveBeenCalledTimes(MAX_GENERATION_ATTEMPTS)
+    expect(fallback).toHaveBeenCalledTimes(1)
+    expect(getQuestionProblems(question)).toEqual([])
+    errors.mockRestore()
+  })
+
+  it('allows a few attempts, not one and not endless', () => {
+    expect(MAX_GENERATION_ATTEMPTS).toBeGreaterThanOrEqual(3)
+    expect(MAX_GENERATION_ATTEMPTS).toBeLessThanOrEqual(20)
+  })
+
+  it('takes another limit when given one', () => {
+    const errors = silenced()
+    const make = vi.fn(bad)
+
+    generateCheckedQuestion(make, good, 2)
+
+    expect(make).toHaveBeenCalledTimes(2)
+    errors.mockRestore()
+  })
+
+  it('logs each failure for developers, saying what was wrong', () => {
+    const errors = silenced()
+
+    generateCheckedQuestion(bad, good, 1)
+
+    expect(errors.mock.calls[0][0]).toMatch(
+      /Made an invalid question, 0 × 0 \(attempt 1 of 1\): Correct answer 1 should be 0/,
+    )
+    expect(errors.mock.calls[1][0]).toMatch(/Using the fallback question/)
+    errors.mockRestore()
+  })
+
+  it('throws only when even the fallback is invalid', () => {
+    const errors = silenced()
+
+    expect(() => generateCheckedQuestion(bad, bad, 1)).toThrow(
+      QuestionGenerationError,
+    )
+    expect(() => generateCheckedQuestion(bad, bad, 1)).toThrow(
+      /Even the fallback question is invalid/,
+    )
+    errors.mockRestore()
   })
 })

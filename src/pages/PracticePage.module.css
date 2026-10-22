@@ -1,3 +1,14 @@
+/*
+ * On a tablet the card sits a little below the top, nearer the middle of the
+ * screen. The space depends on the window alone, never on the card, so the card
+ * stays where it is when it turns over.
+ */
+@media (min-width: 48rem) {
+  .stage {
+    padding-top: max(0px, calc((100dvh - 44rem) / 3));
+  }
+}
+
 /* Lines up with the card below it. */
 .progress {
   max-width: 40rem;
@@ -8,4 +19,15 @@
   display: flex;
   justify-content: center;
   margin-top: var(--space-lg);
+}
+
+/* Said when a session is brought back, in the same place as the progress bar it sits above. */
+.welcome {
+  max-width: 40rem;
+  margin: 0 auto var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-lg);
+  background: var(--color-primary-soft);
+  font-weight: 700;
+  text-align: center;
 }

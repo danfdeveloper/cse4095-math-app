@@ -21,7 +21,7 @@ afterEach(() => {
 })
 
 describe('storage keys', () => {
-  it('are exactly the ones named in the specification', () => {
+  it('are the ones named in the specification, and one more for the session in progress', () => {
     expect(STORAGE_KEYS).toEqual({
       settings: 'mathPractice.settings',
       sessions: 'mathPractice.sessions',
@@ -29,6 +29,7 @@ describe('storage keys', () => {
       mistakePatterns: 'mathPractice.mistakePatterns',
       statistics: 'mathPractice.statistics',
       version: 'mathPractice.version',
+      activeSession: 'mathPractice.activeSession',
     })
   })
 })

@@ -5,7 +5,8 @@
   /* Large enough for small fingers: well above the 44px touch-target guideline. */
   min-height: 3.5rem;
   min-width: 3.5rem;
-  padding: 0.75rem 1.75rem;
+  /* The padding follows the text size, but not past a share of a narrow screen, so a long word still fits. */
+  padding: min(0.75rem, 3vw) min(1.75rem, 6vw);
   border: 3px solid var(--color-primary);
   border-radius: var(--radius-pill);
   font: inherit;

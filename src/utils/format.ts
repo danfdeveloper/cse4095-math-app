@@ -44,3 +44,8 @@ export function formatSessionDate(timestamp: string): string {
   const date = new Date(timestamp)
   return Number.isNaN(date.getTime()) ? 'Unknown date' : dateFormat.format(date)
 }
+
+/** A number of questions in words: "1 question", "5 questions". */
+export function formatQuestionCount(count: number): string {
+  return `${count} ${count === 1 ? 'question' : 'questions'}`
+}

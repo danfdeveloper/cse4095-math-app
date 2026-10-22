@@ -106,10 +106,31 @@ export function finishedSessionState(
   overrides: Partial<PracticeConfig> = {},
   counts: { correct?: number; incorrect?: number; mistakeReview?: number } = {},
 ): PracticeSessionState {
+  const { correct = 0, incorrect = 0 } = counts
+  if (correct + incorrect === 0) return endedSessionState(overrides)
+  return answeredState(overrides, counts, false)
+}
+
+/**
+ * A session still in progress after the given numbers of right and wrong
+ * answers, with its next question on screen: how a session looks when it is
+ * brought back after a refresh.
+ */
+export function inProgressSessionState(
+  overrides: Partial<PracticeConfig> = {},
+  counts: { correct?: number; incorrect?: number } = {},
+): PracticeSessionState {
+  return answeredState(overrides, counts, true)
+}
+
+function answeredState(
+  overrides: Partial<PracticeConfig>,
+  counts: { correct?: number; incorrect?: number; mistakeReview?: number },
+  keepGoing: boolean,
+): PracticeSessionState {
   const { correct = 0, incorrect = 0, mistakeReview = 0 } = counts
   const total = correct + incorrect
   let state = activeSessionState(overrides)
-  if (total === 0) return endedSessionState(overrides)
 
   for (let i = 0; i < total; i++) {
     const session = state.session!
@@ -127,7 +148,7 @@ export function finishedSessionState(
           selfReportedCorrect: i < correct,
         }),
         nextQuestion:
-          i === total - 1
+          i === total - 1 && !keepGoing
             ? null
             : generateNextQuestion(
                 session.operations,

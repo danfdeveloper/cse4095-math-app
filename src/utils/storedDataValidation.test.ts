@@ -1,15 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_SETTINGS } from '../constants/settings'
-import { makeAttempt, makeMistakePattern, makeSession } from '../test/fixtures'
+import {
+  makeAttempt,
+  makeMistakePattern,
+  makeQuestion,
+  makeSession,
+} from '../test/fixtures'
 import {
   createEmptyStatistics,
   statisticsFromAttempts,
 } from '../services/statisticsService'
 import {
   isAppStatistics,
+  isCardProgress,
   isMistakePattern,
   isPracticeAttempt,
   isPracticeSession,
+  isStoredQuestion,
   keepValidRecords,
   sanitizeSettings,
 } from './storedDataValidation'
@@ -236,6 +243,7 @@ describe('sanitizeSettings', () => {
     soundEffectsEnabled: true,
     cardAnimationEnabled: false,
     showExplanations: false,
+    feedbackEffectsEnabled: false,
     defaultSessionLength: 20,
     defaultDifficulty: 3,
     defaultOperations: ['multiplication', 'division'],
@@ -275,6 +283,11 @@ describe('sanitizeSettings', () => {
       ['a text flag', { soundEffectsEnabled: 'yes' }, 'soundEffectsEnabled'],
       ['a numeric flag', { cardAnimationEnabled: 1 }, 'cardAnimationEnabled'],
       ['a null flag', { showExplanations: null }, 'showExplanations'],
+      [
+        'a word for a flag',
+        { feedbackEffectsEnabled: 'off' },
+        'feedbackEffectsEnabled',
+      ],
       [
         'a zero session length',
         { defaultSessionLength: 0 },
@@ -643,5 +656,94 @@ describe('isMistakePattern', () => {
         }),
       ),
     ).toBe(false)
+  })
+})
+
+describe('isStoredQuestion', () => {
+  it('accepts a complete question that follows the rules', () => {
+    expect(isStoredQuestion(makeQuestion())).toBe(true)
+  })
+
+  it('accepts a mistake-review question with its mistake', () => {
+    expect(
+      isStoredQuestion(
+        makeQuestion({
+          source: 'mistake-review',
+          mistakePatternId: 'multiplication:7:8:2',
+        }),
+      ),
+    ).toBe(true)
+  })
+
+  it.each([
+    ['nothing', undefined],
+    ['null', null],
+    ['text', '7 × 8'],
+    ['a list', [7, 8]],
+  ])('rejects %s', (_name, value) => {
+    expect(isStoredQuestion(value)).toBe(false)
+  })
+
+  it.each<[string, Record<string, unknown>]>([
+    ['no id', { id: '' }],
+    ['an id that is not text', { id: 7 }],
+    ['an unknown operation', { operation: 'power' }],
+    ['an operand with a fraction', { firstOperand: 7.5 }],
+    ['an operand that is text', { secondOperand: '8' }],
+    ['display text that is not text', { displayText: 78 }],
+    ['an answer that is text', { correctAnswer: '56' }],
+    ['choices that are not a list', { choices: '48,54,56,64' }],
+    ['a choice that is text', { choices: [48, '54', 56, 64] }],
+    ['an unknown level', { difficulty: 5 }],
+    ['an unknown source', { source: 'guess' }],
+    ['an empty mistake id', { mistakePatternId: '' }],
+  ])('rejects a question with %s', (_name, change) => {
+    expect(isStoredQuestion({ ...makeQuestion(), ...change })).toBe(false)
+  })
+
+  it.each<[string, Record<string, unknown>]>([
+    ['the wrong answer', { correctAnswer: 57, choices: [48, 54, 57, 64] }],
+    ['repeated choices', { choices: [48, 56, 56, 64] }],
+    ['three choices', { choices: [48, 56, 64] }],
+    ['no choice that is the answer', { choices: [48, 54, 55, 64] }],
+    [
+      'operands outside the level',
+      {
+        firstOperand: 70,
+        secondOperand: 80,
+        displayText: '70 × 80',
+        correctAnswer: 5600,
+        choices: [5400, 5500, 5600, 5700],
+      },
+    ],
+    ['no display text', { displayText: '' }],
+  ])(
+    'rejects a question that breaks the question rules with %s',
+    (_name, change) => {
+      expect(isStoredQuestion({ ...makeQuestion(), ...change })).toBe(false)
+    },
+  )
+})
+
+describe('isCardProgress', () => {
+  it.each([
+    [{ selectedAnswer: null, flipped: false }],
+    [{ selectedAnswer: 54, flipped: false }],
+    [{ selectedAnswer: 54, flipped: true }],
+  ])('accepts %j', (value) => {
+    expect(isCardProgress(value)).toBe(true)
+  })
+
+  it.each([
+    ['nothing', undefined],
+    ['null', null],
+    ['text', 'flipped'],
+    ['a pick that is text', { selectedAnswer: '54', flipped: false }],
+    ['a pick with a fraction', { selectedAnswer: 5.5, flipped: false }],
+    ['a pick left out', { flipped: false }],
+    ['a turn that is text', { selectedAnswer: 54, flipped: 'yes' }],
+    ['a turn left out', { selectedAnswer: 54 }],
+  ])('rejects %s', (_name, value) => {
+    expect(isCardProgress(value)).toBe(false)
   })
 })

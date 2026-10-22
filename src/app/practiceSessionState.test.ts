@@ -1127,3 +1127,157 @@ describe('answering questions in a mistake-review session', () => {
     expect(next.mistakePatterns[0].similarCorrectCount).toBe(0)
   })
 })
+
+describe('what has been done with the card on screen', () => {
+  const pick = { selectedAnswer: 54, flipped: false }
+  const turned = { selectedAnswer: 54, flipped: true }
+  const change = (
+    state: PracticeSessionState,
+    card: { selectedAnswer: number | null; flipped: boolean },
+    questionId = state.currentQuestion?.id ?? 'none',
+  ) => practiceSessionReducer(state, { type: 'cardChanged', questionId, card })
+
+  it('starts with nothing picked and the card not turned over', () => {
+    expect(initialPracticeSessionState.card).toEqual({
+      selectedAnswer: null,
+      flipped: false,
+    })
+    expect(started().card).toEqual({ selectedAnswer: null, flipped: false })
+  })
+
+  it('keeps an answer being picked, and then the card being turned over', () => {
+    const picked = change(started(), pick)
+    expect(picked.card).toEqual(pick)
+
+    expect(change(picked, turned).card).toEqual(turned)
+  })
+
+  it('keeps a pick being changed', () => {
+    const picked = change(started(), pick)
+
+    expect(change(picked, { selectedAnswer: 48, flipped: false }).card).toEqual(
+      { selectedAnswer: 48, flipped: false },
+    )
+  })
+
+  it('does not copy the card it is given, so that the caller cannot change it later', () => {
+    const given = { ...turned }
+    const state = change(started(), given)
+
+    expect(state.card).not.toBe(given)
+  })
+
+  it('returns the very same state when nothing differs, so that nothing is saved for nothing', () => {
+    const picked = change(started(), pick)
+
+    expect(change(picked, { ...pick })).toBe(picked)
+    const fresh = started()
+    expect(change(fresh, { selectedAnswer: null, flipped: false })).toBe(fresh)
+  })
+
+  it('notices a change in only the pick, or only the turn', () => {
+    const picked = change(started(), pick)
+
+    expect(change(picked, { selectedAnswer: 48, flipped: false })).not.toBe(
+      picked,
+    )
+    expect(change(picked, turned)).not.toBe(picked)
+  })
+
+  describe('is ignored', () => {
+    it('for a question that is not the one on screen', () => {
+      const state = started()
+
+      expect(change(state, pick, 'another-question')).toBe(state)
+    })
+
+    it('for an answer that is not one of the choices', () => {
+      const state = started()
+
+      expect(change(state, { selectedAnswer: 99, flipped: false })).toBe(state)
+    })
+
+    it('for a card turned over with nothing picked', () => {
+      const state = started()
+
+      expect(change(state, { selectedAnswer: null, flipped: true })).toBe(state)
+    })
+
+    it('when there is no session', () => {
+      expect(change(initialPracticeSessionState, pick, 'q1')).toBe(
+        initialPracticeSessionState,
+      )
+    })
+
+    it('when the session has ended', () => {
+      const ended = practiceSessionReducer(started(), {
+        type: 'sessionEnded',
+        completedAt: '2026-03-04T10:30:00.000Z',
+      })
+
+      expect(change(ended, pick, 'q1')).toBe(ended)
+    })
+  })
+
+  describe('starts over', () => {
+    const picked = () => change(started(), turned)
+
+    it('when the question is answered', () => {
+      const next = record(picked(), 'q1', true, q2)
+
+      expect(next.card).toEqual({ selectedAnswer: null, flipped: false })
+    })
+
+    it('when the last question is answered', () => {
+      const next = record(
+        change(started({ sessionLength: 1 }), turned),
+        'q1',
+        true,
+        null,
+      )
+
+      expect(next.card).toEqual({ selectedAnswer: null, flipped: false })
+    })
+
+    it('when a new session starts', () => {
+      const next = practiceSessionReducer(picked(), {
+        type: 'sessionStarted',
+        session: createSession(config),
+        firstQuestion: q2,
+      })
+
+      expect(next.card).toEqual({ selectedAnswer: null, flipped: false })
+    })
+
+    it('when the session ends', () => {
+      const next = practiceSessionReducer(picked(), {
+        type: 'sessionEnded',
+        completedAt: '2026-03-04T10:30:00.000Z',
+      })
+
+      expect(next.card).toEqual({ selectedAnswer: null, flipped: false })
+    })
+
+    it('when the session is thrown away', () => {
+      const next = practiceSessionReducer(picked(), {
+        type: 'sessionDiscarded',
+      })
+
+      expect(next.card).toEqual({ selectedAnswer: null, flipped: false })
+    })
+
+    it('when everything is erased', () => {
+      const next = practiceSessionReducer(picked(), { type: 'historyReset' })
+
+      expect(next.card).toEqual({ selectedAnswer: null, flipped: false })
+    })
+
+    it('each time to a card of its own, never the shared one', () => {
+      const a = started().card
+      const b = started().card
+
+      expect(a).not.toBe(b)
+      expect(a).not.toBe(initialPracticeSessionState.card)
+    })
+  })
+})

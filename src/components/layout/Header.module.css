@@ -25,11 +25,19 @@
   display: inline-flex;
   align-items: center;
   /* As tall as the navigation links beside it, so it is as easy to tap. */
-  min-height: 2.75rem;
+  min-height: var(--target-min);
   color: var(--color-primary);
   font-size: var(--font-size-lg);
   font-weight: 800;
   text-decoration: none;
+}
+
+/* On a phone the bar is kept low, so the page itself gets the room. */
+@media (max-width: 47.99rem) {
+  .inner {
+    column-gap: var(--space-md);
+    padding-block: var(--space-sm);
+  }
 }
 
 .brand:hover {

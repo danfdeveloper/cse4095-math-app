@@ -9,16 +9,16 @@ vi.mock('../utils/validation', async (importOriginal) => {
 
 import { generateQuestion, QuestionGenerationError } from './questionGenerator'
 
-describe('generateQuestion when validation fails', () => {
-  it('throws instead of returning an invalid question', () => {
+describe('generateQuestion when every question fails validation', () => {
+  it('tries, falls back, and throws only because the fallback fails too', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+
     expect(() => generateQuestion('addition', 1, () => 0)).toThrow(
       QuestionGenerationError,
     )
-  })
-
-  it('says which question failed and why', () => {
     expect(() => generateQuestion('addition', 1, () => 0)).toThrow(
-      'Generated an invalid question (0 + 0): Division by zero',
+      'Even the fallback question is invalid (0 + 0): Division by zero',
     )
+    errors.mockRestore()
   })
 })

@@ -268,13 +268,21 @@ describe('after a browser restart', () => {
     })
   })
 
-  it('does not bring back an unfinished session as one in progress', () => {
-    playAndClose([right])
+  it('brings back an unfinished session as one in progress, at the question it was on', () => {
+    playAndClose([right, wrong])
 
     const { result } = mount()
+    const { practice } = result.current
 
-    expect(result.current.practice.isActive).toBe(false)
-    expect(result.current.practice.session).toBeNull()
+    expect(practice.isActive).toBe(true)
+    expect(practice.session).toMatchObject({
+      attempted: 2,
+      correct: 1,
+      incorrect: 1,
+    })
+    expect(practice.currentQuestionIndex).toBe(2)
+    expect(practice.currentQuestion).not.toBeNull()
+    expect(practice.restoredSessionId).toBe(practice.session?.id)
   })
 
   it('adds new attempts to the old ones, losing nothing', () => {
@@ -1544,5 +1552,337 @@ describe('mistake patterns', () => {
 
     expect(hook.result.current.practice.mistakePatterns).toHaveLength(1)
     expect(hook.result.current.status.problem).toBe('unavailable')
+  })
+})
+
+describe('the session in progress', () => {
+  const savedActive = () =>
+    stored(STORAGE_KEYS.activeSession) as
+      | {
+          session: ReturnType<typeof makeSession>
+          currentQuestion: { id: string; choices: number[] }
+          card: { selectedAnswer: number | null; flipped: boolean }
+        }
+      | undefined
+  const fresh = { selectedAnswer: null, flipped: false }
+
+  function startedApp(length: PracticeConfig['sessionLength'] = 3) {
+    const app = mount()
+    act(
+      () =>
+        void app.result.current.practice.startSession({
+          ...config,
+          sessionLength: length,
+        }),
+    )
+    return app
+  }
+
+  describe('is saved', () => {
+    it('as soon as it starts, with its question and a card nothing has been done to', () => {
+      const { result } = startedApp()
+      const { session, currentQuestion } = result.current.practice
+
+      expect(savedActive()).toEqual({
+        session,
+        currentQuestion,
+        card: fresh,
+      })
+    })
+
+    it('with each pick and each turn of the card', () => {
+      const { result } = startedApp()
+      const question = result.current.practice.currentQuestion!
+      const answer = question.choices[2]
+
+      act(() =>
+        result.current.practice.rememberCard(question.id, {
+          selectedAnswer: answer,
+          flipped: false,
+        }),
+      )
+      expect(savedActive()?.card).toEqual({
+        selectedAnswer: answer,
+        flipped: false,
+      })
+
+      act(() =>
+        result.current.practice.rememberCard(question.id, {
+          selectedAnswer: answer,
+          flipped: true,
+        }),
+      )
+      expect(savedActive()?.card).toEqual({
+        selectedAnswer: answer,
+        flipped: true,
+      })
+    })
+
+    it('with the next question, and a fresh card, after an answer', () => {
+      const { result } = startedApp()
+      const first = result.current.practice.currentQuestion!
+      act(() =>
+        result.current.practice.rememberCard(first.id, {
+          selectedAnswer: first.choices[0],
+          flipped: true,
+        }),
+      )
+
+      act(() => result.current.practice.recordResult(wrong))
+
+      const saved = savedActive()!
+      expect(saved.currentQuestion.id).not.toBe(first.id)
+      expect(saved.currentQuestion.id).toBe(
+        result.current.practice.currentQuestion!.id,
+      )
+      expect(saved.session).toMatchObject({
+        attempted: 1,
+        incorrect: 1,
+        correct: 0,
+      })
+      expect(saved.card).toEqual(fresh)
+    })
+
+    it('in place of an earlier session when another is started', () => {
+      const { result } = startedApp()
+      const earlier = result.current.practice.session!.id
+
+      act(() => void result.current.practice.startSession(config))
+
+      expect(savedActive()?.session.id).toBe(
+        result.current.practice.session!.id,
+      )
+      expect(savedActive()?.session.id).not.toBe(earlier)
+    })
+
+    it('not for a pick that belongs to some other question', () => {
+      const { result } = startedApp()
+
+      act(() =>
+        result.current.practice.rememberCard('another-question', {
+          selectedAnswer: 1,
+          flipped: false,
+        }),
+      )
+
+      expect(savedActive()?.card).toEqual(fresh)
+    })
+  })
+
+  describe('is cleared', () => {
+    it('when it is ended', () => {
+      const { result } = startedApp()
+      act(() => result.current.practice.recordResult(right))
+
+      act(() => result.current.practice.endSession())
+
+      expect(window.localStorage.getItem(STORAGE_KEYS.activeSession)).toBeNull()
+      // What was answered is kept, as before.
+      expect(savedAttempts()).toHaveLength(1)
+      expect(savedSessions()[0]).toMatchObject({ attempted: 1 })
+    })
+
+    it('when it is thrown away', () => {
+      const { result } = startedApp()
+      expect(savedActive()).toBeDefined()
+
+      act(() => result.current.practice.discardSession())
+
+      expect(window.localStorage.getItem(STORAGE_KEYS.activeSession)).toBeNull()
+    })
+
+    it('when its last question is answered', () => {
+      const { result } = startedApp(2)
+      act(() => result.current.practice.recordResult(right))
+      expect(savedActive()).toBeDefined()
+
+      act(() => result.current.practice.recordResult(right))
+
+      expect(window.localStorage.getItem(STORAGE_KEYS.activeSession)).toBeNull()
+      expect(result.current.practice.isActive).toBe(false)
+    })
+
+    it('when the statistics are reset', () => {
+      const { result } = startedApp()
+
+      act(() => result.current.practice.resetStatistics())
+
+      expect(window.localStorage.getItem(STORAGE_KEYS.activeSession)).toBeNull()
+    })
+
+    it('when all data is cleared', () => {
+      const { result } = startedApp()
+
+      act(() => void result.current.settings.clearAllData())
+
+      expect(window.localStorage.getItem(STORAGE_KEYS.activeSession)).toBeNull()
+      expect(result.current.practice.session).toBeNull()
+    })
+
+    it('and does not come back after the app is opened again', () => {
+      const first = startedApp(1)
+      act(() => first.result.current.practice.recordResult(right))
+      first.unmount()
+
+      const { result } = mount()
+
+      expect(result.current.practice.isActive).toBe(false)
+      expect(result.current.practice.session).toBeNull()
+    })
+  })
+
+  describe('is brought back after a refresh', () => {
+    it('exactly as it was: the session, the question and the card', () => {
+      const first = startedApp(5)
+      act(() => first.result.current.practice.recordResult(right))
+      const question = first.result.current.practice.currentQuestion!
+      act(() =>
+        first.result.current.practice.rememberCard(question.id, {
+          selectedAnswer: question.choices[1],
+          flipped: true,
+        }),
+      )
+      const before = first.result.current.practice
+      first.unmount()
+
+      const { result } = mount()
+      const { practice } = result.current
+
+      expect(practice.isActive).toBe(true)
+      expect(practice.session).toEqual(before.session)
+      expect(practice.currentQuestion).toEqual(before.currentQuestion)
+      expect(practice.currentQuestionIndex).toBe(1)
+      expect(practice.card).toEqual({
+        selectedAnswer: question.choices[1],
+        flipped: true,
+      })
+      expect(practice.restoredSessionId).toBe(before.session!.id)
+    })
+
+    it('and carries on: the next answer adds to what was there, and the end clears it', () => {
+      const first = startedApp(3)
+      act(() => first.result.current.practice.recordResult(right))
+      first.unmount()
+
+      const { result } = mount()
+      act(() => result.current.practice.recordResult(wrong))
+      act(() => result.current.practice.recordResult(right))
+
+      expect(result.current.practice.session).toMatchObject({
+        attempted: 3,
+        correct: 2,
+        incorrect: 1,
+      })
+      expect(result.current.practice.isActive).toBe(false)
+      expect(savedAttempts()).toHaveLength(3)
+      expect(window.localStorage.getItem(STORAGE_KEYS.activeSession)).toBeNull()
+    })
+
+    it('counts as one of the saved sessions once it has an answer', () => {
+      const first = startedApp(3)
+      act(() => first.result.current.practice.recordResult(right))
+      first.unmount()
+
+      const { result } = mount()
+
+      expect(
+        result.current.practice.sessions.map((session) => session.id),
+      ).toEqual([result.current.practice.session!.id])
+    })
+
+    it('with its saved copy in the history brought up to date from the attempts', () => {
+      const first = startedApp(5)
+      act(() => first.result.current.practice.recordResult(right))
+      act(() => first.result.current.practice.recordResult(wrong))
+      first.unmount()
+      // The history was saved before the last answer, as after a failed save.
+      const stale = savedSessions().map((session) => ({
+        ...session,
+        attempted: 1,
+        correct: 1,
+        incorrect: 0,
+      }))
+      window.localStorage.setItem(STORAGE_KEYS.sessions, JSON.stringify(stale))
+
+      const { result } = mount()
+
+      expect(result.current.practice.sessions[0]).toMatchObject({
+        attempted: 2,
+        correct: 1,
+        incorrect: 1,
+      })
+    })
+
+    it('but not as a saved session while nothing has been answered', () => {
+      const first = startedApp(3)
+      first.unmount()
+
+      const { result } = mount()
+
+      expect(result.current.practice.isActive).toBe(true)
+      expect(result.current.practice.sessions).toEqual([])
+    })
+
+    it('without rewriting what it just loaded', () => {
+      const first = startedApp(3)
+      first.unmount()
+      const before = window.localStorage.getItem(STORAGE_KEYS.activeSession)
+      window.localStorage.setItem(STORAGE_KEYS.activeSession, before! + ' ')
+
+      mount()
+
+      expect(window.localStorage.getItem(STORAGE_KEYS.activeSession)).toBe(
+        before + ' ',
+      )
+    })
+
+    it('with no saved session, says there was none to bring back', () => {
+      const { result } = mount()
+
+      expect(result.current.practice.restoredSessionId).toBeNull()
+    })
+
+    it('and says so only for that session, not for the next one started', () => {
+      const first = startedApp(3)
+      first.unmount()
+      const { result } = mount()
+      const restored = result.current.practice.session!.id
+
+      act(() => void result.current.practice.startSession(config))
+
+      expect(result.current.practice.session!.id).not.toBe(restored)
+      expect(result.current.practice.restoredSessionId).toBe(restored)
+    })
+
+    it('not when what was saved cannot be used: the app starts as if there was none', () => {
+      window.localStorage.setItem(STORAGE_KEYS.activeSession, '{"session": 1}')
+
+      const { result } = mount()
+
+      expect(result.current.practice.isActive).toBe(false)
+      expect(result.current.practice.session).toBeNull()
+      expect(window.localStorage.getItem(STORAGE_KEYS.activeSession)).toBeNull()
+    })
+  })
+
+  describe('when saving does not work', () => {
+    it('keeps going in memory and says so, as for everything else', () => {
+      restore = failWritesTo(STORAGE_KEYS.activeSession)
+
+      const { result } = startedApp()
+
+      expect(result.current.practice.isActive).toBe(true)
+      expect(result.current.status.problem).toBe('full')
+    })
+
+    it('says so too when storage is switched off, and the session still works', () => {
+      restore = blockStorage()
+
+      const { result } = startedApp()
+      act(() => result.current.practice.recordResult(right))
+
+      expect(result.current.status.problem).toBe('unavailable')
+      expect(result.current.practice.session?.attempted).toBe(1)
+    })
   })
 })

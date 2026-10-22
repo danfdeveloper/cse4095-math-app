@@ -1,7 +1,9 @@
 import {
   useCallback,
+  useEffect,
   useMemo,
   useReducer,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -9,6 +11,8 @@ import { useSaveOnChange } from '../hooks/useSaveOnChange'
 import {
   eraseSavedData,
   loadPersistedData,
+  type PersistedData,
+  saveActiveSession,
   saveAttempts,
   saveMistakePatterns,
   saveSessions,
@@ -25,9 +29,22 @@ import {
   generateReviewQuestion,
   recentQuestionsOf,
 } from '../services/reviewQuestions'
-import type { WriteFailure, WriteResult } from '../services/storageService'
-import type { PracticeConfig, QuestionResult } from '../types/session'
+import {
+  STORAGE_KEYS,
+  STORAGE_PREFIX,
+  type WriteFailure,
+  type WriteResult,
+} from '../services/storageService'
+import type { Question } from '../types/question'
+import type {
+  CardProgress,
+  PracticeConfig,
+  QuestionResult,
+  SavedActiveSession,
+} from '../types/session'
 import type { AppSettings } from '../types/settings'
+import { logDevError } from '../utils/devLog'
+import { upsertSession } from '../utils/sessionHistory'
 import { sanitizeSettings } from '../utils/storedDataValidation'
 import { isPracticeConfig } from '../utils/validation'
 import { AppSettingsContext, type AppSettingsApi } from './AppSettingsContext'
@@ -59,7 +76,12 @@ interface AppProviderProps {
 }
 
 type SavedItem =
-  'settings' | 'sessions' | 'attempts' | 'statistics' | 'mistakePatterns'
+  | 'settings'
+  | 'sessions'
+  | 'attempts'
+  | 'statistics'
+  | 'mistakePatterns'
+  | 'activeSession'
 
 interface StorageStatus {
   /**
@@ -71,6 +93,46 @@ interface StorageStatus {
   failures: Partial<Record<SavedItem, WriteFailure>>
   /** The problem the student pressed OK on, so it is not shown again. */
   dismissedProblem: StorageProblem | null
+}
+
+/**
+ * The question `make` gives, or null if it throws. Making questions falls back
+ * to a safe question rather than fail, so this is a last guard: a session that
+ * cannot have a question does not start, or ends, and the app carries on.
+ */
+function questionOrNull(make: () => Question | null): Question | null {
+  try {
+    return make()
+  } catch (error) {
+    logDevError('No question could be made.', error)
+    return null
+  }
+}
+
+/** The practice state a visit starts from: what was saved, with the session that was in progress. */
+function stateFromSaved(loaded: PersistedData): PracticeSessionState {
+  const base: PracticeSessionState = {
+    ...initialPracticeSessionState,
+    sessions: loaded.sessions,
+    attempts: loaded.attempts,
+    statistics: loaded.statistics,
+    mistakePatterns: loaded.mistakePatterns,
+  }
+  const active = loaded.activeSession
+  if (active === null) return base
+
+  return {
+    ...base,
+    session: active.session,
+    currentQuestion: active.currentQuestion,
+    currentQuestionIndex: active.session.attempted,
+    card: active.card,
+    // The session counts as one of the saved ones as soon as it has an answer.
+    sessions:
+      active.session.attempted > 0
+        ? upsertSession(loaded.sessions, active.session)
+        : loaded.sessions,
+  }
 }
 
 /** The most important problem among the failures, if there are any. */
@@ -94,13 +156,11 @@ export function AppProvider({ children, initialState }: AppProviderProps) {
   const [settings, setSettings] = useState<AppSettings>(loaded.settings)
   const [state, dispatch] = useReducer(
     practiceSessionReducer,
-    initialState ?? {
-      ...initialPracticeSessionState,
-      sessions: loaded.sessions,
-      attempts: loaded.attempts,
-      statistics: loaded.statistics,
-      mistakePatterns: loaded.mistakePatterns,
-    },
+    initialState ?? stateFromSaved(loaded),
+  )
+  // The session brought back from the last visit, so that its page can say so.
+  const [restoredSessionId] = useState(
+    () => loaded.activeSession?.session.id ?? null,
   )
   const [status, setStatus] = useState<StorageStatus>({
     failures: {},
@@ -133,26 +193,76 @@ export function AppProvider({ children, initialState }: AppProviderProps) {
     [loaded.writable],
   )
 
+  // What was just read back from storage after another tab saved. It is
+  // already saved, so it is not written again: that would be wasted work, and
+  // could set the tabs answering each other.
+  const fromStorage = useRef(new WeakSet<object>())
+
+  // Another tab (or window) of the app saved something. Catch up with it, so
+  // that this tab's next save adds to what the other saved instead of writing
+  // over it. This tab's own session in progress is kept.
+  useEffect(() => {
+    function catchUp(event: StorageEvent) {
+      const { key } = event
+      const ours =
+        key === null ||
+        (key.startsWith(STORAGE_PREFIX) && key !== STORAGE_KEYS.activeSession)
+      if (!ours) return
+
+      const latest = loadPersistedData({ activeSession: false })
+      if (latest.problem !== null) return
+      const { attempts, sessions, statistics, mistakePatterns } = latest
+      for (const value of [attempts, sessions, statistics, mistakePatterns]) {
+        fromStorage.current.add(value)
+      }
+      fromStorage.current.add(latest.settings)
+      setSettings((current) =>
+        JSON.stringify(current) === JSON.stringify(latest.settings)
+          ? current
+          : latest.settings,
+      )
+      dispatch({
+        type: 'historyLoaded',
+        attempts,
+        sessions,
+        statistics,
+        mistakePatterns,
+      })
+    }
+    window.addEventListener('storage', catchUp)
+    return () => window.removeEventListener('storage', catchUp)
+  }, [])
+
   useSaveOnChange(
     settings,
     useCallback(
-      (value: AppSettings) => persist('settings', () => saveSettings(value)),
+      (value: AppSettings) => {
+        if (!fromStorage.current.has(value)) {
+          persist('settings', () => saveSettings(value))
+        }
+      },
       [persist],
     ),
   )
   useSaveOnChange(
     state.attempts,
     useCallback(
-      (value: PracticeSessionState['attempts']) =>
-        persist('attempts', () => saveAttempts(value)),
+      (value: PracticeSessionState['attempts']) => {
+        if (!fromStorage.current.has(value)) {
+          persist('attempts', () => saveAttempts(value))
+        }
+      },
       [persist],
     ),
   )
   useSaveOnChange(
     state.sessions,
     useCallback(
-      (value: PracticeSessionState['sessions']) =>
-        persist('sessions', () => saveSessions(value)),
+      (value: PracticeSessionState['sessions']) => {
+        if (!fromStorage.current.has(value)) {
+          persist('sessions', () => saveSessions(value))
+        }
+      },
       [persist],
     ),
   )
@@ -160,8 +270,11 @@ export function AppProvider({ children, initialState }: AppProviderProps) {
   useSaveOnChange(
     state.statistics,
     useCallback(
-      (value: PracticeSessionState['statistics']) =>
-        persist('statistics', () => saveStatistics(value)),
+      (value: PracticeSessionState['statistics']) => {
+        if (!fromStorage.current.has(value)) {
+          persist('statistics', () => saveStatistics(value))
+        }
+      },
       [persist],
     ),
   )
@@ -169,8 +282,31 @@ export function AppProvider({ children, initialState }: AppProviderProps) {
   useSaveOnChange(
     state.mistakePatterns,
     useCallback(
-      (value: PracticeSessionState['mistakePatterns']) =>
-        persist('mistakePatterns', () => saveMistakePatterns(value)),
+      (value: PracticeSessionState['mistakePatterns']) => {
+        if (!fromStorage.current.has(value)) {
+          persist('mistakePatterns', () => saveMistakePatterns(value))
+        }
+      },
+      [persist],
+    ),
+  )
+
+  // What a refresh needs to bring the session back: the session, its question, and the card.
+  const { session, currentQuestion, card } = state
+  const activeSnapshot = useMemo<SavedActiveSession | null>(
+    () =>
+      session !== null &&
+      session.completedAt === undefined &&
+      currentQuestion !== null
+        ? { session, currentQuestion, card }
+        : null,
+    [session, currentQuestion, card],
+  )
+  useSaveOnChange(
+    activeSnapshot,
+    useCallback(
+      (value: SavedActiveSession | null) =>
+        persist('activeSession', () => saveActiveSession(value)),
       [persist],
     ),
   )
@@ -183,13 +319,14 @@ export function AppProvider({ children, initialState }: AppProviderProps) {
 
       // A review session asks about the mistakes its choices cover. With none
       // to practice there is nothing to start.
-      const firstQuestion =
+      const firstQuestion = questionOrNull(() =>
         config.mode === 'mistake-review'
           ? generateReviewQuestion(state.mistakePatterns, config, {
               threshold: masteryThreshold,
               now: new Date(),
             })
-          : generateQuestionForOperations(config.operations, config.difficulty)
+          : generateQuestionForOperations(config.operations, config.difficulty),
+      )
       if (firstQuestion === null) return false
 
       dispatch({
@@ -217,42 +354,49 @@ export function AppProvider({ children, initialState }: AppProviderProps) {
       dispatch({
         type: 'resultRecorded',
         attempt,
-        // No question is made after the last one of a fixed session.
+        // No question is made after the last one of a fixed session. If one
+        // cannot be made at all, the session ends here, keeping this answer.
         nextQuestion: isFinalQuestion(session)
           ? null
-          : session.mode === 'mistake-review'
-            ? // Chosen from the mistakes as this answer leaves them. When none still
-              // need practice (the last was just mastered) there is no next question,
-              // and the session ends.
-              generateReviewQuestion(
-                patternsAfterAnswer(
-                  state.mistakePatterns,
-                  currentQuestion,
-                  attempt,
-                  masteryThreshold,
-                ),
-                session,
-                {
-                  threshold: masteryThreshold,
-                  now: new Date(),
-                  previousPatternId: currentQuestion.mistakePatternId,
-                  recent: recentQuestionsOf(
+          : questionOrNull(() =>
+              session.mode === 'mistake-review'
+                ? // Chosen from the mistakes as this answer leaves them. When none still
+                  // need practice (the last was just mastered) there is no next question,
+                  // and the session ends.
+                  generateReviewQuestion(
+                    patternsAfterAnswer(
+                      state.mistakePatterns,
+                      currentQuestion,
+                      attempt,
+                      masteryThreshold,
+                    ),
                     session,
-                    state.attempts,
+                    {
+                      threshold: masteryThreshold,
+                      now: new Date(),
+                      previousPatternId: currentQuestion.mistakePatternId,
+                      recent: recentQuestionsOf(
+                        session,
+                        state.attempts,
+                        currentQuestion,
+                      ),
+                    },
+                  )
+                : generateNextQuestion(
+                    session.operations,
+                    session.difficulty,
                     currentQuestion,
                   ),
-                },
-              )
-            : generateNextQuestion(
-                session.operations,
-                session.difficulty,
-                currentQuestion,
-              ),
+            ),
         masteryThreshold,
       })
     },
     [state, masteryThreshold],
   )
+
+  const rememberCard = useCallback((questionId: string, card: CardProgress) => {
+    dispatch({ type: 'cardChanged', questionId, card })
+  }, [])
 
   const endSession = useCallback(() => {
     dispatch({ type: 'sessionEnded', completedAt: new Date().toISOString() })
@@ -296,16 +440,20 @@ export function AppProvider({ children, initialState }: AppProviderProps) {
     () => ({
       ...state,
       isActive: isSessionActive(state),
+      restoredSessionId,
       startSession,
       recordResult,
+      rememberCard,
       endSession,
       discardSession,
       resetStatistics,
     }),
     [
       state,
+      restoredSessionId,
       startSession,
       recordResult,
+      rememberCard,
       endSession,
       discardSession,
       resetStatistics,

@@ -5,3 +5,8 @@
   margin: 0 auto;
   padding: clamp(1.5rem, 5vw, 3rem) var(--page-gutter);
 }
+
+/* Focus is moved here by the skip link on purpose; it is not a control, so no ring is needed. */
+.container:focus {
+  outline: none;
+}

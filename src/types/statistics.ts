@@ -13,4 +13,10 @@ export interface AppStatistics {
   incorrect: number
   byOperation: Record<MathOperation, OperationStatistics>
   byDifficulty: Record<DifficultyLevel, OperationStatistics>
+  /**
+   * The questions answered in mistake practice, a part of the totals above.
+   * Kept as a running total, like the rest, so that it survives old attempt
+   * records being archived.
+   */
+  mistakeReview: OperationStatistics
 }

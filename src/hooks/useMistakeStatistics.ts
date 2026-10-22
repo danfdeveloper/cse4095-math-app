@@ -16,17 +16,17 @@ export interface MistakeView {
   hasMistakes: boolean
 }
 
-/** What the statistics page shows about mistakes, worked out from the saved mistakes and attempts. */
+/** What the statistics page shows about mistakes, worked out from the saved mistakes and totals. */
 export function useMistakeStatistics(): MistakeView {
-  const { mistakePatterns, attempts } = usePracticeSession()
+  const { mistakePatterns, statistics } = usePracticeSession()
 
   return useMemo(() => {
     const { active, mastered } = splitMistakes(mistakePatterns)
     return {
-      summary: buildMistakeStatistics(mistakePatterns, attempts),
+      summary: buildMistakeStatistics(mistakePatterns, statistics),
       active,
       mastered,
       hasMistakes: mistakePatterns.length > 0,
     }
-  }, [mistakePatterns, attempts])
+  }, [mistakePatterns, statistics])
 }

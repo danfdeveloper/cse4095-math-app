@@ -5,8 +5,12 @@ import {
 } from '../constants/settings'
 import { mistakePatternId } from '../services/mistakePatterns'
 import type { MistakePattern } from '../types/mistake'
-import type { MathOperation } from '../types/question'
-import type { PracticeAttempt, PracticeSession } from '../types/session'
+import type { MathOperation, Question } from '../types/question'
+import type {
+  CardProgress,
+  PracticeAttempt,
+  PracticeSession,
+} from '../types/session'
 import type { AppSettings } from '../types/settings'
 import type { AppStatistics, OperationStatistics } from '../types/statistics'
 import { DIFFICULTY_LEVELS, MATH_OPERATIONS } from '../constants/practice'
@@ -15,6 +19,7 @@ import {
   isDifficultyLevel,
   isPracticeModeOrAbsent,
   isSupportedOperation,
+  isValidQuestion,
 } from './validation'
 
 /*
@@ -94,6 +99,38 @@ export function isPracticeSession(value: unknown): value is PracticeSession {
 }
 
 /**
+ * A saved question is only used if it is complete and passes every rule a
+ * question must pass before it is shown (specification section 18).
+ */
+export function isStoredQuestion(value: unknown): value is Question {
+  return (
+    isRecord(value) &&
+    isNonEmptyString(value.id) &&
+    isSupportedOperation(value.operation) &&
+    isWholeNumber(value.firstOperand) &&
+    isWholeNumber(value.secondOperand) &&
+    typeof value.displayText === 'string' &&
+    isWholeNumber(value.correctAnswer) &&
+    Array.isArray(value.choices) &&
+    value.choices.every(isWholeNumber) &&
+    isDifficultyLevel(value.difficulty) &&
+    (value.source === 'regular' || value.source === 'mistake-review') &&
+    (value.mistakePatternId === undefined ||
+      isNonEmptyString(value.mistakePatternId)) &&
+    isValidQuestion(value as unknown as Question)
+  )
+}
+
+/** What was done with a card: an answer picked or not, and turned over or not. */
+export function isCardProgress(value: unknown): value is CardProgress {
+  return (
+    isRecord(value) &&
+    (value.selectedAnswer === null || isWholeNumber(value.selectedAnswer)) &&
+    typeof value.flipped === 'boolean'
+  )
+}
+
+/**
  * A saved mistake pattern is only used if it is complete, its numbers are real
  * numbers of this kind of question (so the answer really is the answer), its
  * ID is the one its contents give it, and it records at least one mistake.
@@ -164,6 +201,10 @@ export function sanitizeSettings(value: unknown): AppSettings {
       value.showExplanations,
       DEFAULT_SETTINGS.showExplanations,
     ),
+    feedbackEffectsEnabled: flag(
+      value.feedbackEffectsEnabled,
+      DEFAULT_SETTINGS.feedbackEffectsEnabled,
+    ),
     defaultSessionLength: isSessionLength(value.defaultSessionLength)
       ? value.defaultSessionLength
       : DEFAULT_SETTINGS.defaultSessionLength,
@@ -197,7 +238,12 @@ function isCounts(value: unknown): value is OperationStatistics {
  * plus wrong is attempted, and the operations, and the levels, each add up to
  * the overall total. Anything else is treated as damaged.
  */
-export function isAppStatistics(value: unknown): value is AppStatistics {
+/** Statistics as saved. Those saved before mistake-practice totals were kept have none. */
+export type SavedStatistics = Omit<AppStatistics, 'mistakeReview'> & {
+  mistakeReview?: OperationStatistics
+}
+
+export function isAppStatistics(value: unknown): value is SavedStatistics {
   if (!isCounts(value)) return false
   const { byOperation, byDifficulty } = value as unknown as Record<
     string,
@@ -213,10 +259,16 @@ export function isAppStatistics(value: unknown): value is AppStatistics {
     groups: OperationStatistics[],
     key: keyof OperationStatistics,
   ) => groups.reduce((sum, group) => sum + group[key], 0) === value[key]
+  const review = (value as unknown as Record<string, unknown>).mistakeReview
   return (
     adds(operations, 'attempted') &&
     adds(operations, 'correct') &&
     adds(levels, 'attempted') &&
-    adds(levels, 'correct')
+    adds(levels, 'correct') &&
+    // Mistake practice is a part of the whole, so it can never be more.
+    (review === undefined ||
+      (isCounts(review) &&
+        review.attempted <= value.attempted &&
+        review.correct <= value.correct))
   )
 }

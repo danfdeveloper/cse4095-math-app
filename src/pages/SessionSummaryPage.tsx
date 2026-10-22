@@ -1,37 +1,45 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { Navigate, useNavigate } from 'react-router'
 import { Button, ButtonLink } from '../components/common/Button'
 import { SessionSummary } from '../components/practice/SessionSummary'
 import { usePracticeSession } from '../hooks/usePracticeSession'
+import { useSessionCheer } from '../hooks/useSessionCheer'
 import { activePatterns } from '../services/mistakePatterns'
 import { summarizeSession } from '../services/statisticsService'
-import type { PracticeConfig } from '../types/session'
+import type { PracticeConfig, PracticeSession } from '../types/session'
 import styles from './SessionSummaryPage.module.css'
 
 export function SessionSummaryPage() {
   const { session } = usePracticeSession()
 
   // Nothing to summarize: no session yet, or the page was opened by typing the address.
-  if (session === null) return <Navigate to="/practice/setup" replace />
+  if (session === null) {
+    return (
+      <Navigate to="/practice/setup" replace state={{ missing: 'summary' }} />
+    )
+  }
   // Still practicing: back to the questions.
   if (session.completedAt === undefined) {
     return <Navigate to="/practice/session" replace />
   }
-  return <SummaryContent />
+  return <SummaryContent session={session} />
 }
 
-function SummaryContent() {
-  const { session, attempts, mistakePatterns, startSession } =
-    usePracticeSession()
+function SummaryContent({ session }: { session: PracticeSession }) {
+  const { attempts, mistakePatterns, startSession } = usePracticeSession()
   const navigate = useNavigate()
   const headingRef = useRef<HTMLHeadingElement>(null)
+  // Goes through every saved attempt, so it is worked out again only when they change.
+  const summary = useMemo(
+    () => summarizeSession(session, attempts),
+    [session, attempts],
+  )
+  const cheer = useSessionCheer(summary.attempted, summary.accuracy)
 
   // The card the student was using is gone, so keyboard focus would be lost.
   useEffect(() => {
     headingRef.current?.focus({ preventScroll: true })
   }, [])
-
-  if (session === null) return null
 
   const config: PracticeConfig = {
     operations: session.operations,
@@ -65,11 +73,10 @@ function SummaryContent() {
       <h1 ref={headingRef} tabIndex={-1} className={styles.heading}>
         Session Summary
       </h1>
-      <p className={styles.intro}>Here is how you did.</p>
-      <SessionSummary
-        session={session}
-        summary={summarizeSession(session, attempts)}
-      />
+      <p className={styles.intro}>
+        {cheer === null ? '' : `${cheer} `}Here is how you did.
+      </p>
+      <SessionSummary session={session} summary={summary} />
       <div className={styles.actions}>
         <Button
           onClick={handlePracticeAgain}

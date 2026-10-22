@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
-import { afterEach } from 'vitest'
+import { afterEach, vi } from 'vitest'
 
 // Vitest globals are disabled, so React Testing Library cannot register its
 // own automatic cleanup. Unmount rendered trees after every test instead.
@@ -73,3 +73,15 @@ if (!localStorageWorks()) {
     get: () => standIn,
   })
 }
+
+// The app downloads the Statistics and Settings pages only when they are first
+// opened. Tests render them straight away instead, so that a page is there as
+// soon as it is rendered. lazyPages.test.ts checks the real, lazy version.
+vi.mock('../app/lazyPages', async () => {
+  const { StatisticsPage } = await import('../pages/StatisticsPage')
+  const { SettingsPage } = await import('../pages/SettingsPage')
+  return {
+    statisticsRoute: { Component: StatisticsPage },
+    settingsRoute: { Component: SettingsPage },
+  }
+})

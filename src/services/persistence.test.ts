@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { createDefaultSettings } from '../constants/settings'
-import { makeAttempt, makeMistakePattern, makeSession } from '../test/fixtures'
+import {
+  createDefaultSettings,
+  MAX_STORED_ATTEMPTS,
+} from '../constants/settings'
+import {
+  makeAttempt,
+  makeMistakePattern,
+  makeQuestion,
+  makeSession,
+} from '../test/fixtures'
 import {
   blockStorage,
   breakStorageMethod,
@@ -13,6 +21,7 @@ import { recordMistake } from './mistakePatterns'
 import {
   eraseSavedData,
   loadPersistedData,
+  saveActiveSession,
   saveAttempts,
   saveMistakePatterns,
   saveSessions,
@@ -39,6 +48,7 @@ const customSettings: AppSettings = {
   soundEffectsEnabled: true,
   cardAnimationEnabled: false,
   showExplanations: false,
+  feedbackEffectsEnabled: false,
   defaultSessionLength: 20,
   defaultDifficulty: 3,
   defaultOperations: ['multiplication'],
@@ -114,17 +124,19 @@ describe('loadPersistedData with saved data', () => {
     expect(sessions[99].id).toBe('s130')
   })
 
-  it('copes with several thousand attempts', () => {
+  it('copes with several thousand attempts, keeping the newest in detail', () => {
     const attempts = Array.from({ length: 6000 }, (_, i) =>
       makeAttempt({ id: `a${i}`, questionId: `q${i}` }),
     )
-    saveAttempts(attempts)
+    window.localStorage.setItem(STORAGE_KEYS.attempts, JSON.stringify(attempts))
 
     const started = performance.now()
     const loaded = loadPersistedData().attempts
     const elapsed = performance.now() - started
 
-    expect(loaded).toHaveLength(6000)
+    expect(loaded).toHaveLength(MAX_STORED_ATTEMPTS)
+    expect(loaded[0].id).toBe('a1000')
+    expect(loaded.at(-1)?.id).toBe('a5999')
     expect(elapsed).toBeLessThan(1000)
   })
 })
@@ -725,5 +737,158 @@ describe('eraseSavedData', () => {
     restore = breakStorageMethod('removeItem')
 
     expect(eraseSavedData()).toBe(false)
+  })
+})
+
+describe('the session in progress', () => {
+  const active = {
+    session: makeSession({
+      id: 's1',
+      operations: ['multiplication'],
+      difficulty: 2,
+      attempted: 0,
+      correct: 0,
+      incorrect: 0,
+    }),
+    currentQuestion: makeQuestion(),
+    card: { selectedAnswer: 54, flipped: true },
+  }
+
+  it('is brought back when it was saved and can be carried on', () => {
+    save(STORAGE_KEYS.activeSession, active)
+
+    const loaded = loadPersistedData()
+
+    expect(loaded.activeSession).toEqual(active)
+    expect(loaded.problem).toBeNull()
+  })
+
+  it('is counted from the saved attempts', () => {
+    save(STORAGE_KEYS.activeSession, active)
+    save(STORAGE_KEYS.attempts, [
+      makeAttempt({
+        sessionId: 's1',
+        questionId: 'earlier',
+        selfReportedCorrect: false,
+      }),
+    ])
+
+    expect(loadPersistedData().activeSession?.session).toMatchObject({
+      attempted: 1,
+      correct: 0,
+      incorrect: 1,
+    })
+  })
+
+  it('is not there on a first visit, and nothing is written for it', () => {
+    expect(loadPersistedData().activeSession).toBeNull()
+    expect(window.localStorage.getItem(STORAGE_KEYS.activeSession)).toBeNull()
+  })
+
+  it.each([
+    ['damaged JSON', '{"session":'],
+    ['something that is not a session', JSON.stringify({ hello: 'world' })],
+    [
+      'a session that has ended',
+      JSON.stringify({
+        ...active,
+        session: { ...active.session, completedAt: '2026-03-04T11:00:00.000Z' },
+      }),
+    ],
+  ])(
+    'is dropped, and taken out of storage so it is not tried again, when it is %s',
+    (_name, raw) => {
+      window.localStorage.setItem(STORAGE_KEYS.activeSession, raw)
+      save(STORAGE_KEYS.settings, customSettings)
+
+      const loaded = loadPersistedData()
+
+      expect(loaded.activeSession).toBeNull()
+      expect(window.localStorage.getItem(STORAGE_KEYS.activeSession)).toBeNull()
+      // Only the session in progress is lost, not the rest.
+      expect(loaded.settings).toEqual(customSettings)
+    },
+  )
+
+  it('is left alone when the saved data comes from a newer version', () => {
+    save(STORAGE_KEYS.version, { version: 99 })
+    save(STORAGE_KEYS.activeSession, active)
+
+    const loaded = loadPersistedData()
+
+    expect(loaded.problem).toBe('newer-version')
+    expect(loaded.activeSession).toBeNull()
+    expect(stored(STORAGE_KEYS.activeSession)).toEqual(active)
+  })
+
+  it('is not there when storage is switched off', () => {
+    restore = blockStorage()
+
+    expect(loadPersistedData()).toMatchObject({
+      activeSession: null,
+      problem: 'unavailable',
+    })
+  })
+
+  it('is not there when reading it fails', () => {
+    save(STORAGE_KEYS.activeSession, active)
+    restore = failReadsOf(STORAGE_KEYS.activeSession)
+
+    expect(loadPersistedData()).toMatchObject({
+      activeSession: null,
+      problem: 'unavailable',
+    })
+  })
+
+  describe('saveActiveSession', () => {
+    it('saves it', () => {
+      expect(saveActiveSession(active)).toEqual({ ok: true })
+
+      expect(stored(STORAGE_KEYS.activeSession)).toEqual(active)
+    })
+
+    it('removes what was saved when there is none now', () => {
+      save(STORAGE_KEYS.activeSession, active)
+
+      expect(saveActiveSession(null)).toEqual({ ok: true })
+
+      expect(window.localStorage.getItem(STORAGE_KEYS.activeSession)).toBeNull()
+    })
+
+    it('says so, and does not throw, when it cannot save', () => {
+      restore = fillStorage()
+
+      expect(saveActiveSession(active)).toEqual({ ok: false, reason: 'full' })
+    })
+
+    it('says so, and does not throw, when it cannot remove', () => {
+      restore = breakStorageMethod('removeItem')
+
+      expect(saveActiveSession(null)).toEqual({
+        ok: false,
+        reason: 'unavailable',
+      })
+    })
+
+    it('reports storage that is switched off', () => {
+      restore = blockStorage()
+
+      expect(saveActiveSession(active)).toEqual({
+        ok: false,
+        reason: 'unavailable',
+      })
+      expect(saveActiveSession(null)).toEqual({
+        ok: false,
+        reason: 'unavailable',
+      })
+    })
+  })
+
+  it('is erased with everything else', () => {
+    save(STORAGE_KEYS.activeSession, active)
+
+    expect(eraseSavedData()).toBe(true)
+
+    expect(window.localStorage.getItem(STORAGE_KEYS.activeSession)).toBeNull()
   })
 })

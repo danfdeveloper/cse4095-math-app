@@ -1,6 +1,10 @@
 .dialog {
-  width: min(32rem, calc(100% - 2rem));
-  padding: clamp(1.25rem, 4vw, 2rem);
+  width: min(32rem, calc(100% - 2 * var(--space-md)));
+  /* Taller than the window at big text sizes or on a tiny screen: it scrolls, so every button can be reached. */
+  max-height: calc(100dvh - 2 * var(--space-md));
+  padding: min(clamp(1.25rem, 4vw, 2rem), 6vw);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border: 0;
   border-radius: var(--radius-lg);
   /* A rainbow stripe along the top edge, with the words on plain white. */

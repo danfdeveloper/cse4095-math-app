@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { initialPracticeSessionState } from '../app/practiceSessionState'
 import { STORAGE_KEYS } from '../services/storageService'
 import { makeMistakePattern } from '../test/fixtures'
+import { leaveTo } from '../test/leaveSession'
 import { renderApp } from '../test/renderApp'
 import { stored } from '../test/storage'
 
@@ -230,7 +231,7 @@ describe('PracticeSetupPage', () => {
       const firstId = probe().session?.id
 
       // Back to a new, empty setup page, then start again.
-      await act(() => router.navigate('/practice/setup'))
+      await leaveTo(router, '/practice/setup', user)
       await chooseOperation(user, 'Division')
       await chooseDifficulty(user, 'Level 2: Easy')
       await user.click(startButton())
@@ -378,7 +379,7 @@ describe('PracticeSetupPage with saved defaults', () => {
       defaultSessionLength: 20,
     })
 
-    await act(() => router.navigate('/practice/setup'))
+    await leaveTo(router, '/practice/setup', user)
     expect(screen.getByRole('checkbox', { name: 'Division' })).toBeChecked()
     expect(screen.getByRole('checkbox', { name: 'Addition' })).not.toBeChecked()
     expect(

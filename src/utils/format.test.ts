@@ -4,6 +4,7 @@ import {
   formatDifficulty,
   formatFact,
   formatList,
+  formatQuestionCount,
   formatSessionDate,
 } from './format'
 
@@ -81,5 +82,16 @@ describe('formatDay', () => {
   it('says so, instead of throwing, for a date it cannot read', () => {
     expect(formatDay('not a date')).toBe('Unknown date')
     expect(formatDay('')).toBe('Unknown date')
+  })
+})
+
+describe('formatQuestionCount', () => {
+  it.each([
+    [0, '0 questions'],
+    [1, '1 question'],
+    [2, '2 questions'],
+    [11, '11 questions'],
+  ])('writes %i as "%s"', (count, expected) => {
+    expect(formatQuestionCount(count)).toBe(expected)
   })
 })

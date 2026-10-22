@@ -1,5 +1,5 @@
-import { MAX_STORED_SESSIONS } from '../constants/settings'
-import type { PracticeSession } from '../types/session'
+import { MAX_STORED_ATTEMPTS, MAX_STORED_SESSIONS } from '../constants/settings'
+import type { PracticeAttempt, PracticeSession } from '../types/session'
 
 /** Keeps only the most recent sessions (the list is oldest first). */
 export function limitSessions(
@@ -29,4 +29,18 @@ export function removeSession(
   sessionId: string,
 ): PracticeSession[] {
   return sessions.filter((session) => session.id !== sessionId)
+}
+
+/**
+ * Keeps only the most recent attempts in detail (the list is oldest first).
+ * The ones left out are already counted in the saved totals and mistakes, so
+ * nothing on screen changes. The same list comes back when nothing is dropped.
+ */
+export function limitAttempts<T extends PracticeAttempt>(
+  attempts: readonly T[],
+  max: number = MAX_STORED_ATTEMPTS,
+): T[] {
+  return attempts.length > max
+    ? attempts.slice(attempts.length - max)
+    : (attempts as T[])
 }
